@@ -6,19 +6,12 @@ interface ImageUploaderProps {
   onImageSelected: (base64Image: string) => void;
   onClear: () => void;
   previewImage: string | null;
-  isKakaoTalk?: boolean;
 }
 
-export default function ImageUploader({ 
-  onImageSelected, 
-  onClear, 
-  previewImage,
-  isKakaoTalk = false 
-}: ImageUploaderProps) {
+export default function ImageUploader({ onImageSelected, onClear, previewImage }: ImageUploaderProps) {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState<boolean>(false);
-  const [showKakaoModal, setShowKakaoModal] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -122,11 +115,7 @@ export default function ImageUploader({
   };
 
   const triggerCameraInput = () => {
-    if (isKakaoTalk) {
-      setShowKakaoModal(true);
-    } else {
-      cameraInputRef.current?.click();
-    }
+    cameraInputRef.current?.click();
   };
 
   return (
@@ -290,61 +279,6 @@ export default function ImageUploader({
               {error}
             </div>
           )}
-        </div>
-      )}
-
-      {/* 카카오톡 앱 외부 브라우저 안내 모달 */}
-      {showKakaoModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-sm rounded-3xl border border-zinc-800 p-6 space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
-            
-            <div className="flex justify-center">
-              <div className="w-14 h-14 rounded-full bg-amber-400 flex items-center justify-center text-zinc-950 font-extrabold text-2xl shadow-lg shadow-amber-400/20">
-                💬
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="font-extrabold text-base text-white">
-                카카오톡 외부 브라우저 열기 안내
-              </h3>
-              <p className="text-zinc-400 text-xs leading-relaxed px-2">
-                카카오톡 내장 브라우저는 스마트폰의 메모리 제약으로 인해 카메라 촬영을 켜는 즉시 **앱이 강제로 새로고침(초기화)되는 버그**가 있습니다.
-              </p>
-            </div>
-
-            <div className="bg-zinc-900/60 rounded-2xl p-4 text-left border border-zinc-800 space-y-3">
-              <p className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                <span>💡 카메라 촬영을 하려면?</span>
-              </p>
-              <ol className="text-zinc-300 text-[11px] leading-relaxed space-y-1.5 list-decimal pl-4">
-                <li>우측 상단의 <span className="font-bold text-white">점 3개(...)</span> 또는 <span className="font-bold text-white">지구본</span> 아이콘을 누릅니다.</li>
-                <li>메뉴창에서 <span className="font-bold text-white">'다른 브라우저로 열기'</span>를 선택해 주세요.</li>
-                <li>사파리나 크롬으로 접속하시면 에러 없이 즉시 촬영이 가능합니다!</li>
-              </ol>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowKakaoModal(false);
-                  triggerFileInput();
-                }}
-                className="w-full py-3 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-bold text-xs shadow-md transition-colors"
-              >
-                🖼️ 비교적 안전한 갤러리 앨범에서 선택하기
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowKakaoModal(false)}
-                className="w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs transition-colors"
-              >
-                닫기
-              </button>
-            </div>
-
-          </div>
         </div>
       )}
     </div>
