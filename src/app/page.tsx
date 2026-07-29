@@ -165,7 +165,7 @@ const STYLE_OPTIONS: Record<'여성' | '남성', StyleItem[]> = {
 };
 
 const LOADING_MESSAGES = [
-  'AI가 고객님의 두상과 얼굴형을 분석 중입니다...',
+  '고객님의 두상과 얼굴형을 분석 중입니다...',
   '헤어라인과 이목구비의 조화를 최적화하는 중...',
   '스타일에 맞는 완벽한 모발 텍스처를 구성하는 중...',
   '빛 반사와 건강한 엔젤링(머릿결 윤기)을 살리는 중...',
@@ -316,6 +316,15 @@ const safeSessionStorage = {
     } catch (e) {
       console.warn('sessionStorage setItem failed:', e);
     }
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.removeItem(key);
+      }
+    } catch (e) {
+      console.warn('sessionStorage removeItem failed:', e);
+    }
   }
 };
 
@@ -335,6 +344,10 @@ export default function HomePage() {
 
   // 스타일 다중 선택
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+
+  // 직접 요청 스타일 직접 입력 상태
+  const [customStyleText, setCustomStyleText] = useState<string>('');
+  const [isCustomStyleApplied, setIsCustomStyleApplied] = useState<boolean>(false);
 
   // AI 추천 스타일 다중 선택 추가
   const [selectedRecommendations, setSelectedRecommendations] = useState<string[]>([]);
@@ -378,6 +391,10 @@ export default function HomePage() {
     setSelectedLength(LENGTH_OPTIONS[gender][0]);
     setSelectedStyles([STYLE_OPTIONS[gender][0].name]);
     setSelectedRecommendations([]); // AI 추천 선택 리셋
+    setCustomStyleText('');
+    setIsCustomStyleApplied(false);
+    safeSessionStorage.removeItem('modestyle_custom_style_text');
+    safeSessionStorage.removeItem('modestyle_is_custom_style_applied');
     setActiveHiddenPrompt(null);
     setDiagnosisResult(null);
     setDiagnosisError(null);
@@ -392,6 +409,16 @@ export default function HomePage() {
     const savedGender = safeSessionStorage.getItem('modestyle_gender');
     if (savedGender === '여성' || savedGender === '남성') {
       setGender(savedGender);
+    }
+
+    // 0-1-2. 직접 요청 스타일 정보 복구
+    const savedCustomText = safeSessionStorage.getItem('modestyle_custom_style_text');
+    if (savedCustomText) {
+      setCustomStyleText(savedCustomText);
+    }
+    const savedCustomApplied = safeSessionStorage.getItem('modestyle_is_custom_style_applied');
+    if (savedCustomApplied === 'true') {
+      setIsCustomStyleApplied(true);
     }
 
     // 0-2. 업로드된 원본 이미지 복구
@@ -560,7 +587,7 @@ export default function HomePage() {
       }
     } catch (err: any) {
       console.error(err);
-      setDiagnosisError(err.message || 'AI 진단 중 오류가 발생했습니다.');
+      setDiagnosisError(err.message || '헤어 진단 중 오류가 발생했습니다.');
     } finally {
       setIsDiagnosing(false);
     }
@@ -609,6 +636,51 @@ export default function HomePage() {
       } else {
         return [...prev, styleName];
       }
+    });
+  };
+
+  // 직접 요청 스타일 입력값 변경 핸들러
+  const handleCustomStyleChange = (text: string) => {
+    const oldVal = customStyleText.trim();
+    const newVal = text.trim();
+    setCustomStyleText(text);
+
+    // 동기 세션 백업
+    safeSessionStorage.setItem('modestyle_custom_style_text', text);
+    safeSessionStorage.setItem('modestyle_is_custom_style_applied', newVal ? 'true' : 'false');
+
+    if (newVal) {
+      setIsCustomStyleApplied(true);
+      setSelectedStyles(prev => {
+        const base = prev.filter(s => s !== oldVal);
+        if (!base.includes(newVal)) {
+          return [...base, newVal];
+        }
+        return base;
+      });
+    } else {
+      setIsCustomStyleApplied(false);
+      if (oldVal) {
+        setSelectedStyles(prev => prev.filter(s => s !== oldVal));
+      }
+    }
+  };
+
+  // 직접 요청 스타일 적용 토글 핸들러
+  const handleCustomStyleToggle = () => {
+    const val = customStyleText.trim();
+    if (!val) return;
+
+    setIsCustomStyleApplied(prev => {
+      const nextApplied = !prev;
+      // 동기 세션 백업
+      safeSessionStorage.setItem('modestyle_is_custom_style_applied', nextApplied ? 'true' : 'false');
+      if (nextApplied) {
+        setSelectedStyles(s => s.includes(val) ? s : [...s, val]);
+      } else {
+        setSelectedStyles(s => s.filter(x => x !== val));
+      }
+      return nextApplied;
     });
   };
 
@@ -694,7 +766,7 @@ export default function HomePage() {
     });
 
     if (queue.length === 0) {
-      setErrorMsg('시뮬레이션할 타겟 헤어 스타일 또는 AI 추천 스타일을 최소 하나 이상 선택해 주세요.');
+      setErrorMsg('시뮬레이션할 타겟 헤어 스타일 또는 추천 스타일을 최소 하나 이상 선택해 주세요.');
       return;
     }
 
@@ -1143,7 +1215,7 @@ export default function HomePage() {
             </h2>
 
             <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              디자이너의 감각을 완성하는 프리미엄 AI 파트너
+              디자이너의 감각을 완성하는 프리미엄 파트너
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
@@ -1166,7 +1238,7 @@ export default function HomePage() {
           <div className="w-full max-w-sm lg:max-w-md shrink-0">
             <div className="glass-panel p-4 rounded-3xl border border-zinc-800/80 shadow-2xl relative flex flex-col">
               <div className="absolute -top-3.5 -right-3.5 bg-amber-400 text-zinc-950 text-[10px] font-bold tracking-wider px-3 py-1 rounded-full uppercase shadow-lg shadow-amber-400/20">
-                AI 시뮬레이션 예시
+                시뮬레이션 예시
               </div>
 
               {/* 예시 성별 탭 추가 */}
@@ -1227,7 +1299,7 @@ export default function HomePage() {
         <section ref={simulatorRef} id="simulator" className="space-y-8 scroll-mt-24">
 
           <div className="max-w-xl mx-auto text-center space-y-2">
-            <h3 className="text-2xl md:text-3xl font-extrabold text-white">AI 스타일링 랩 (Styling Lab)</h3>
+            <h3 className="text-2xl md:text-3xl font-extrabold text-white">헤어 스타일링 랩 (Styling Lab)</h3>
             <p className="text-zinc-500 text-xs md:text-sm">
               고객님의 성별과 사진을 등록하여 시뮬레이션을 준비해 주세요.
             </p>
@@ -1291,7 +1363,7 @@ export default function HomePage() {
                   <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                     <span className="text-zinc-200 text-xs font-bold flex items-center gap-1.5">
                       <Activity className="w-4 h-4 text-amber-400" />
-                      AI 실시간 헤어 진단 리포트
+                      실시간 헤어 진단 리포트
                     </span>
                   </div>
 
@@ -1321,7 +1393,7 @@ export default function HomePage() {
                       {/* TOP 3 추천 스타일 */}
                       <div className="space-y-2.5">
                         <span className="text-zinc-300 text-xs font-bold block uppercase tracking-wider">
-                          💡 AI 추천 스타일 TOP 3 (상담 매칭)
+                          💡 추천 스타일 TOP 3 (상담 매칭)
                         </span>
 
                         <div className="space-y-2">
@@ -1377,7 +1449,7 @@ export default function HomePage() {
                     </div>
                   ) : (
                     <p className="text-xs text-zinc-600 text-center py-6">
-                      사진을 업로드하면 실시간 AI 진단 결과가 여기에 노출됩니다.
+                      사진을 업로드하면 실시간 진단 결과가 여기에 노출됩니다.
                     </p>
                   )}
                 </div>
@@ -1435,6 +1507,41 @@ export default function HomePage() {
                     );
                   })}
                 </div>
+
+                {/* 직접 스타일 요청 입력 폼 */}
+                <div className="border-t border-zinc-800/80 pt-4 mt-3.5 space-y-2">
+                  <span className="text-zinc-400 text-[11px] font-bold block">
+                    ✨ 원하는 스타일 직접 요청하기 (직접 입력)
+                  </span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={customStyleText}
+                      onChange={(e) => handleCustomStyleChange(e.target.value)}
+                      placeholder="예: 리프 가르마펌, 슬릭백 언더컷 등"
+                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-850 hover:border-zinc-700 text-xs md:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-400 transition-all shadow-inner"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCustomStyleToggle}
+                      disabled={!customStyleText.trim()}
+                      className={`px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
+                        isCustomStyleApplied && customStyleText.trim()
+                          ? 'bg-amber-400 border-amber-400 text-zinc-950 font-extrabold'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed'
+                      }`}
+                    >
+                      {isCustomStyleApplied && customStyleText.trim() ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          적용됨
+                        </>
+                      ) : (
+                        '적용'
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* 실행 에러 메시지 */}
@@ -1469,7 +1576,7 @@ export default function HomePage() {
                     <>
                       <Sparkles className="w-5 h-5" />
                       <span>
-                        AI 헤어 디자인 시뮬레이션 시작
+                        헤어 디자인 시뮬레이션 시작
                         {totalJobsCount > 0 ? ` (${totalJobsCount}개 디자인)` : ''}
                       </span>
                     </>
@@ -1485,7 +1592,7 @@ export default function HomePage() {
                     <p className="text-zinc-200 font-bold text-sm">
                       {totalJobsCount > 1
                         ? `전체 ${totalJobsCount}개 스타일 중 ${currentGeneratingIndex! + 1}번째 진행 중...`
-                        : 'AI 헤어 스타일 변환 중...'}
+                        : '헤어 스타일 변환 중...'}
                     </p>
 
                     {totalJobsCount > 1 && (
@@ -1496,7 +1603,7 @@ export default function HomePage() {
                         />
                       </div>
                     )}
-                    <p className="text-zinc-500 text-xs pt-1">안전한 AI 서버에서 렌더링을 차례로 가동하고 있습니다.</p>
+                    <p className="text-zinc-500 text-xs pt-1">안전한 전용 서버에서 렌더링을 차례로 가동하고 있습니다.</p>
                   </div>
                 </div>
               )}
@@ -1631,8 +1738,6 @@ export default function HomePage() {
 
           <div className="flex items-center gap-4 text-zinc-500">
             <span>© 2026 {salonName}. All rights reserved. Powered by ModeStyle Pro</span>
-            <span className="hidden md:inline">|</span>
-            <span>이미지 1장 원가 약 70원 · Nano Banana 2 기준</span>
           </div>
 
           <div
