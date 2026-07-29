@@ -248,7 +248,10 @@ interface SimulationResult {
 const createWatermarkedFile = (imageSrc: string, styleName: string, salonName: string): Promise<File> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous'; // CORS 에러 방지
+    // base64 data URL이 아닌 외부 웹 이미지인 경우에만 CORS 헤더 요청 적용
+    if (imageSrc && imageSrc.startsWith('http')) {
+      img.crossOrigin = 'anonymous'; 
+    }
     img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
@@ -816,7 +819,9 @@ export default function HomePage() {
 
     // 2. 파일이 준비되지 않았거나 Web Share API가 지원되지 않는 경우 동적 생성 및 다운로드(저장)
     const img = new Image();
-    img.crossOrigin = 'anonymous'; // CORS 에러 방지
+    if (result.afterImage && result.afterImage.startsWith('http')) {
+      img.crossOrigin = 'anonymous'; // CORS 에러 방지 (외부 이미지인 경우에만)
+    }
     img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
