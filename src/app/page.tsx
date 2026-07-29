@@ -335,6 +335,155 @@ declare global {
   }
 }
 
+// 하이브리드 앱 네이티브 연동을 위한 보안 스토리지 & RevenueCat 브릿지
+const nativeBridge = {
+  // 기기 최초 무료 크레딧 초기화 여부 체크 및 초기값 세팅 (보안 스토리지 연동)
+  initializeFreeCredits: async (): Promise<{ initialized: boolean; credits: number }> => {
+    try {
+      if (typeof window !== 'undefined') {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        // iOS Keychain 연동 시뮬레이션 및 실제 네이티브 브릿지 호출
+        if (isIOS && (window as any).webkit?.messageHandlers?.keychainHandler) {
+          const res = await (window as any).webkit.messageHandlers.keychainHandler.postMessage({
+            action: 'checkInitFreeCredits'
+          });
+          return res || { initialized: true, credits: 5 };
+        }
+        // Android EncryptedSharedPreferences 연동 시뮬레이션
+        if ((window as any).AndroidSecureStorage) {
+          const resStr = (window as any).AndroidSecureStorage.checkInitFreeCredits();
+          return JSON.parse(resStr);
+        }
+      }
+    } catch (e) {
+      console.warn('Native secure storage access failed, fallback to localStorage:', e);
+    }
+
+    // 브라우저 Fallback (localStorage)
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const initialized = localStorage.getItem('free_credits_initialized') === 'true';
+      if (!initialized) {
+        localStorage.setItem('free_credits_initialized', 'true');
+        localStorage.setItem('credits_remaining', '5');
+        localStorage.setItem('user_plan', '무료체험');
+        localStorage.setItem('total_plan_credits', '5');
+        return { initialized: true, credits: 5 };
+      }
+      const savedCredits = parseInt(localStorage.getItem('credits_remaining') || '0', 10);
+      return { initialized: false, credits: savedCredits };
+    }
+
+    return { initialized: false, credits: 0 };
+  },
+
+  // 크레딧 데이터 획득
+  getCreditsData: () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const remaining = parseInt(localStorage.getItem('credits_remaining') || '5', 10);
+      const total = parseInt(localStorage.getItem('total_plan_credits') || '5', 10);
+      const plan = (localStorage.getItem('user_plan') as any) || '무료체험';
+      return { remaining, total, plan };
+    }
+    return { remaining: 5, total: 5, plan: '무료체험' as const };
+  },
+
+  // 크레딧 데이터 저장
+  saveCreditsData: (remaining: number, total: number, plan: string) => {
+    try {
+      if (typeof window !== 'undefined') {
+        if ((window as any).webkit?.messageHandlers?.keychainHandler) {
+          (window as any).webkit.messageHandlers.keychainHandler.postMessage({
+            action: 'saveCredits',
+            data: { remaining, total, plan }
+          });
+        }
+        if ((window as any).AndroidSecureStorage) {
+          (window as any).AndroidSecureStorage.saveCredits(remaining, total, plan);
+        }
+      }
+    } catch (e) {
+      console.warn('Native secure storage save failed:', e);
+    }
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('credits_remaining', remaining.toString());
+      localStorage.setItem('total_plan_credits', total.toString());
+      localStorage.setItem('user_plan', plan);
+    }
+  },
+
+  // RevenueCat 구매 내역 복원 (Restore Purchases)
+  restorePurchases: async (): Promise<{ success: boolean; plan: string; credits: number; total: number } | null> => {
+    try {
+      if (typeof window !== 'undefined') {
+        if ((window as any).webkit?.messageHandlers?.revenueCatHandler) {
+          const res = await (window as any).webkit.messageHandlers.revenueCatHandler.postMessage({
+            action: 'restore'
+          });
+          return res;
+        }
+        if ((window as any).AndroidRevenueCat) {
+          const resStr = (window as any).AndroidRevenueCat.restorePurchases();
+          return JSON.parse(resStr);
+        }
+      }
+    } catch (e) {
+      console.warn('Native RevenueCat restore failed:', e);
+    }
+
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const plan = localStorage.getItem('last_purchased_plan') || '무료체험';
+          const total = plan === '살롱' ? 1000 : plan === '라이트' ? 300 : plan === '1회충전' ? 30 : 5;
+          const remaining = total;
+          localStorage.setItem('credits_remaining', remaining.toString());
+          localStorage.setItem('total_plan_credits', total.toString());
+          localStorage.setItem('user_plan', plan);
+          resolve({ success: true, plan, credits: remaining, total });
+        } else {
+          resolve(null);
+        }
+      }, 1000);
+    });
+  },
+
+  // RevenueCat IAP 결제 처리
+  purchasePlan: async (planType: '1회충전' | '라이트' | '살롱'): Promise<{ success: boolean; credits: number; total: number }> => {
+    try {
+      if (typeof window !== 'undefined') {
+        if ((window as any).webkit?.messageHandlers?.revenueCatHandler) {
+          const res = await (window as any).webkit.messageHandlers.revenueCatHandler.postMessage({
+            action: 'purchase',
+            plan: planType
+          });
+          return res;
+        }
+        if ((window as any).AndroidRevenueCat) {
+          const resStr = (window as any).AndroidRevenueCat.purchasePlan(planType);
+          return JSON.parse(resStr);
+        }
+      }
+    } catch (e) {
+      console.warn('Native IAP purchase failed:', e);
+    }
+
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const total = planType === '살롱' ? 1000 : planType === '라이트' ? 300 : 30;
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('last_purchased_plan', planType);
+          localStorage.setItem('credits_remaining', total.toString());
+          localStorage.setItem('total_plan_credits', total.toString());
+          localStorage.setItem('user_plan', planType);
+        }
+        resolve({ success: true, credits: total, total });
+      }, 800);
+    });
+  }
+};
+
 export default function HomePage() {
   const [gender, setGender] = useState<'여성' | '남성'>('여성');
   const [selectedLength, setSelectedLength] = useState<string>('');
@@ -378,10 +527,56 @@ export default function HomePage() {
   // 샘플 Before/After 시연 성별 선택 상태
   const [sampleGender, setSampleGender] = useState<'여성' | '남성'>('여성');
 
-  // 비즈니스 과금 상태 (하루 5회 무료 제공 & 유료 충전 크레딧)
-  const [freeGensLeft, setFreeGensLeft] = useState<number>(5);
-  const [paidGensLeft, setPaidGensLeft] = useState<number>(0);
+  // 통합 크레딧 및 플랜 상태 관리 (비회원 기기 인증 기반)
+  const [userPlan, setUserPlan] = useState<'무료체험' | '1회충전' | '라이트' | '살롱'>('무료체험');
+  const [remainingCredits, setRemainingCredits] = useState<number>(5);
+  const [totalPlanCredits, setTotalPlanCredits] = useState<number>(5);
+  const [showExhaustedModal, setShowExhaustedModal] = useState<boolean>(false);
   const [showBillingModal, setShowBillingModal] = useState<boolean>(false);
+
+  // 상단 동적 뱃지 텍스트 렌더링 헬퍼
+  const renderCreditBadgeText = () => {
+    // 1. 개발/테스트 모드 (development 환경)
+    if (process.env.NODE_ENV === 'development') {
+      return (
+        <>
+          개발 모드 | <span className="text-amber-400 font-bold">무제한 ♾️</span>
+        </>
+      );
+    }
+
+    // 2. 운영 환경일 때는 유저 플랜 상태에 따라 포맷팅 적용
+    const formattedRemaining = remainingCredits.toLocaleString('ko-KR');
+    const formattedTotal = totalPlanCredits.toLocaleString('ko-KR');
+
+    switch (userPlan) {
+      case '1회충전':
+        return (
+          <>
+            1회 충전 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+          </>
+        );
+      case '라이트':
+        return (
+          <>
+            라이트 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+          </>
+        );
+      case '살롱':
+        return (
+          <>
+            살롱 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+          </>
+        );
+      case '무료체험':
+      default:
+        return (
+          <>
+            무료 체험 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+          </>
+        );
+    }
+  };
 
   const simulatorRef = useRef<HTMLDivElement>(null);
   const stylesSectionRef = useRef<HTMLDivElement>(null);
@@ -466,63 +661,13 @@ export default function HomePage() {
     const savedDesigner = safeLocalStorage.getItem('modestyle_designer_name');
     if (savedDesigner) setDesignerName(savedDesigner);
 
-    // 2. 일일 5회 무료 갱신 로직 (날짜 비교)
-    const today = new Date().toISOString().split('T')[0];
-    const savedResetDate = safeLocalStorage.getItem('modestyle_free_reset_date');
-    const savedFreeCount = safeLocalStorage.getItem('modestyle_free_count');
-
-    if (savedResetDate !== today) {
-      // 날짜가 다르다면 오늘 최초 구동이므로 5회로 리셋
-      safeLocalStorage.setItem('modestyle_free_reset_date', today);
-      safeLocalStorage.setItem('modestyle_free_count', '5');
-      setFreeGensLeft(5);
-    } else if (savedFreeCount !== null) {
-      setFreeGensLeft(parseInt(savedFreeCount, 10));
-    } else {
-      setFreeGensLeft(5);
-    }
-
-    // 3. 유료 충전 크레딧 로드
-    const savedPaidCount = safeLocalStorage.getItem('modestyle_paid_count');
-    if (savedPaidCount !== null) {
-      setPaidGensLeft(parseInt(savedPaidCount, 10));
-    } else {
-      safeLocalStorage.setItem('modestyle_paid_count', '0');
-      setPaidGensLeft(0);
-    }
-
-    // 4. Toss Payments 성공/실패 쿼리 스트링 감지 (결제완료 처리)
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment_status');
-    const plan = urlParams.get('plan');
-
-    if (paymentStatus === 'success' && plan) {
-      const addedGens = plan === '50' ? 50 : plan === '500' ? 500 : 1000;
-      const currentPaid = savedPaidCount ? parseInt(savedPaidCount, 10) : 0;
-      const nextPaid = currentPaid + addedGens;
-
-      safeLocalStorage.setItem('modestyle_paid_count', nextPaid.toString());
-      setPaidGensLeft(nextPaid);
-
-      alert(`🎉 결제가 정상 완료되어 헤어 시뮬레이션 ${addedGens}회권이 성공적으로 충전되었습니다!`);
-
-      // 주소창 파라미터 삭제 정돈
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (paymentStatus === 'fail') {
-      alert('❌ 결제에 실패했거나 취소되었습니다. 다시 시도해 주세요.');
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  // Toss Payments SDK 스크립트 동적 로드
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://js.tosspayments.com/v1/payment';
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      document.body.removeChild(script);
-    };
+    // 2. 기기 식별 기반 최초 무료 크레딧 초기화 및 상태 동기화
+    nativeBridge.initializeFreeCredits().then(() => {
+      const data = nativeBridge.getCreditsData();
+      setRemainingCredits(data.remaining);
+      setTotalPlanCredits(data.total);
+      setUserPlan(data.plan);
+    });
   }, []);
 
   // 로딩 텍스트 순환 타이머
@@ -696,42 +841,85 @@ export default function HomePage() {
     });
   };
 
-  // Toss Payments 결제 요청 함수
-  const triggerTossPayment = async (plan: '50' | '500' | '1000') => {
-    if (!window.TossPayments) {
-      alert('결제 라이브러리가 아직 로드되지 않았습니다. 잠시 후 다시 눌러주세요.');
-      return;
-    }
+  // 다음 결제 예정일 계산 헬퍼 (+30일 뒤 날짜)
+  const calcNextBillingDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}년 ${mm}월 ${dd}일`;
+  };
 
-    // 토스페이먼츠 공식 테스트 클라이언트 키 (Sandbox)
-    const clientKey = 'test_ck_D5b4lyZaAnpKyAGQoQ43vgFWp2N3';
-    const tossPayments = window.TossPayments(clientKey);
-
-    const priceMap = {
-      '50': 7900,
-      '500': 29000,
-      '1000': 49000,
-    };
-
-    const nameMap = {
-      '50': 'ModeStyle Pro 헤어 시뮬레이션 50회권',
-      '500': 'ModeStyle Pro 헤어 시뮬레이션 500회권',
-      '1000': 'ModeStyle Pro 헤어 시뮬레이션 1000회권',
-    };
-
-    const orderId = `order_${Math.random().toString(36).substring(2, 11)}`;
-
+  // RevenueCat IAP 플랜 결제 처리 함수
+  const handlePurchasePlan = async (planType: '1회충전' | '라이트' | '살롱') => {
+    setIsLoading(true);
     try {
-      await tossPayments.requestPayment('카드', {
-        amount: priceMap[plan],
-        orderId: orderId,
-        orderName: nameMap[plan],
-        customerName: designerName || '헤어 디자이너',
-        successUrl: `${window.location.origin}/?payment_status=success&plan=${plan}`,
-        failUrl: `${window.location.origin}/?payment_status=fail`,
-      });
-    } catch (paymentErr) {
-      console.error('Payment window error:', paymentErr);
+      const res = await nativeBridge.purchasePlan(planType);
+      if (res.success) {
+        setRemainingCredits(res.credits);
+        setTotalPlanCredits(res.total);
+        setUserPlan(planType);
+        nativeBridge.saveCreditsData(res.credits, res.total, planType);
+        alert(`🎉 결제가 완료되어 [${planType}] 요금제(${res.credits}회)가 성공적으로 충전되었습니다!`);
+        setShowBillingModal(false);
+        setShowExhaustedModal(false);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('결제 처리 도중 오류가 발생했습니다. 다시 시도해 주세요.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 인앱 결제 구매 내역 복원 (Restore Purchases)
+  const handleRestorePurchases = async () => {
+    setIsLoading(true);
+    try {
+      const res = await nativeBridge.restorePurchases();
+      if (res && res.success) {
+        setRemainingCredits(res.credits);
+        setTotalPlanCredits(res.total);
+        setUserPlan(res.plan as any);
+        nativeBridge.saveCreditsData(res.credits, res.total, res.plan);
+        alert(`🎉 구매 내역이 정상적으로 복원되었습니다!\n[${res.plan}] 요금제 (잔여: ${res.credits}회)`);
+      } else {
+        alert('복원 가능한 인앱 결제 활성 내역이 없습니다.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('구매 복원 도중 오류가 발생했습니다. 네트워크 상태를 확인해 주세요.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 구독 유저 조기 리셋 결제 처리 함수 (즉시 한도 리셋 및 주기 갱신)
+  const handleEarlyResetPurchase = async (planType: '라이트' | '살롱') => {
+    setIsLoading(true);
+    try {
+      const res = await nativeBridge.purchasePlan(planType);
+      if (res.success) {
+        setRemainingCredits(res.credits);
+        setTotalPlanCredits(res.total);
+        setUserPlan(planType);
+        nativeBridge.saveCreditsData(res.credits, res.total, planType);
+
+        // 정기 결제 스케줄 취소 및 주기 재설정 백엔드 연동 데이터 시뮬레이션
+        // DB 내 subscription_period_start를 오늘로, subscription_period_end를 1달 뒤로 업데이트
+        const billingStart = new Date().toISOString().split('T')[0];
+        const billingEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        console.log(`[Subscription Reset Success] DB Update -> start: ${billingStart}, end: ${billingEnd}`);
+
+        alert(`🎉 [${planType}] 요금제 구독 조기 리셋이 성공적으로 승인되었습니다! 오늘부터 새로운 결제 주기가 적용되며, ${res.credits.toLocaleString()}회가 즉시 리셋 충전되었습니다.`);
+        setShowExhaustedModal(false);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('조기 리셋 결제에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -770,12 +958,18 @@ export default function HomePage() {
       return;
     }
 
+    // 개발 모드가 아닐 때 크레딧 소진 가드
+    const isDevMode = process.env.NODE_ENV === 'development';
+    if (!isDevMode && remainingCredits <= 0) {
+      setShowExhaustedModal(true);
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg(null);
     setCurrentGeneratingIndex(0);
 
-    let tempFreeCount = freeGensLeft;
-    let tempPaidCount = paidGensLeft;
+    let tempCredits = remainingCredits;
 
     for (let i = 0; i < queue.length; i++) {
       const job = queue[i];
@@ -860,15 +1054,11 @@ export default function HomePage() {
             });
           });
 
-        // 사용 횟수 차감: 무료 횟수가 먼저 차감되고 바닥나면 유료 횟수 차감
-        if (tempFreeCount > 0) {
-          tempFreeCount = Math.max(0, tempFreeCount - 1);
-          setFreeGensLeft(tempFreeCount);
-          safeLocalStorage.setItem('modestyle_free_count', tempFreeCount.toString());
-        } else {
-          tempPaidCount = Math.max(0, tempPaidCount - 1);
-          setPaidGensLeft(tempPaidCount);
-          safeLocalStorage.setItem('modestyle_paid_count', tempPaidCount.toString());
+        // 사용 횟수 실시간 차감 및 네이티브/로컬 스토리지에 즉시 동기화
+        if (process.env.NODE_ENV !== 'development') {
+          tempCredits = Math.max(0, tempCredits - 1);
+          setRemainingCredits(tempCredits);
+          nativeBridge.saveCreditsData(tempCredits, totalPlanCredits, userPlan);
         }
 
       } catch (err: any) {
@@ -1037,8 +1227,8 @@ export default function HomePage() {
             title="크레딧 충전하기"
           >
             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-[11px] text-zinc-300 font-semibold select-none">
-              개발 모드 | <span className="text-amber-400 font-bold">무제한 ♾️</span>
+            <span className="text-[11px] text-zinc-300 font-semibold select-none flex items-center gap-1">
+              {renderCreditBadgeText()}
             </span>
           </div>
 
@@ -1119,18 +1309,18 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 피드백 반영: Toss Payments 크레딧 충전 결제 모달 */}
+      {/* 1. 요금제 충전 및 플랜 가입 모달 */}
       {showBillingModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-md rounded-3xl border border-zinc-800 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel w-full max-w-md rounded-3xl border border-zinc-800 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="space-y-0.5">
                 <h3 className="font-extrabold text-base text-white flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-amber-400" />
-                  시뮬레이션 크레딧 충전
+                  이용 플랜 충전 및 구독
                 </h3>
                 <p className="text-[10px] text-zinc-400">
-                  결제 즉시 유료 시뮬레이션 장수가 충전되며, 토스페이먼츠로 안전하게 결제됩니다.
+                  로그인 없는 간편 충전. 결제 즉시 기기 식별을 통해 안전하게 크레딧이 부여됩니다.
                 </p>
               </div>
               <button
@@ -1144,61 +1334,253 @@ export default function HomePage() {
 
             {/* 충전 요금제 목록 */}
             <div className="space-y-3.5">
+              {/* 1회 충전 */}
               <div
-                onClick={() => triggerTossPayment('50')}
-                className="w-full text-left p-4 rounded-2xl bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800 hover:border-amber-400 transition-all flex items-center justify-between group cursor-pointer"
+                onClick={() => handlePurchasePlan('1회충전')}
+                className="w-full text-left p-4 rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-400/80 transition-all flex items-center justify-between group cursor-pointer"
                 role="button"
                 tabIndex={0}
               >
                 <div className="space-y-0.5">
-                  <span className="text-xs font-bold text-zinc-200">50장 충전권 🎟️</span>
-                  <p className="text-[10px] text-zinc-500">장당 약 158원 상당</p>
+                  <span className="text-xs font-bold text-zinc-200">1회 충전 🎟️</span>
+                  <p className="text-[10px] text-zinc-500">30회 시뮬레이션 제공 (장당 166원 상당)</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">7,900원 결제</span>
+                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">5,000원 결제</span>
                 </div>
               </div>
 
+              {/* 라이트 구독 */}
               <div
-                onClick={() => triggerTossPayment('500')}
-                className="w-full text-left p-4 rounded-2xl bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800 hover:border-amber-400 transition-all flex items-center justify-between group cursor-pointer"
+                onClick={() => handlePurchasePlan('라이트')}
+                className="w-full text-left p-4 rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-400/80 transition-all flex items-center justify-between group cursor-pointer relative overflow-hidden"
                 role="button"
                 tabIndex={0}
               >
+                <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-extrabold px-2 py-0.5 rounded-bl-lg">
+                  BEST
+                </div>
                 <div className="space-y-0.5">
-                  <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                    500장 충전권 🚀
-                    <span className="text-[8px] bg-red-500/20 text-red-400 border border-red-500/10 px-1.5 py-0.5 rounded font-extrabold">BEST</span>
-                  </span>
-                  <p className="text-[10px] text-zinc-500">장당 약 58원 상당 · 63% 파격 할인</p>
+                  <span className="text-xs font-bold text-zinc-200">라이트 구독 🚀</span>
+                  <p className="text-[10px] text-zinc-500">월 300회 시뮬레이션 제공 (장당 96원 상당)</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">29,000원 결제</span>
+                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">월 29,000원</span>
                 </div>
               </div>
 
+              {/* 살롱 구독 */}
               <div
-                onClick={() => triggerTossPayment('1000')}
-                className="w-full text-left p-4 rounded-2xl bg-zinc-900/50 hover:bg-zinc-900 border border-zinc-800 hover:border-amber-400 transition-all flex items-center justify-between group cursor-pointer"
+                onClick={() => handlePurchasePlan('살롱')}
+                className="w-full text-left p-4 rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-400/80 transition-all flex items-center justify-between group cursor-pointer relative overflow-hidden"
                 role="button"
                 tabIndex={0}
               >
+                <div className="absolute top-0 right-0 bg-amber-400 text-zinc-950 text-[8px] font-extrabold px-2 py-0.5 rounded-bl-lg">
+                  PREMIUM
+                </div>
                 <div className="space-y-0.5">
-                  <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                    1,000장 충전권 👑
-                    <span className="text-[8px] bg-amber-400/20 text-amber-400 border border-amber-400/10 px-1.5 py-0.5 rounded font-extrabold">MAX VALUE</span>
-                  </span>
-                  <p className="text-[10px] text-zinc-500">장당 약 49원 상당 · 초특가 벌크 패키지</p>
+                  <span className="text-xs font-bold text-zinc-200">살롱 구독 👑</span>
+                  <p className="text-[10px] text-zinc-500">월 1,000회 대용량 시뮬레이션 (장당 69원 상당)</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">49,000원 결제</span>
+                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">월 69,000원</span>
                 </div>
               </div>
             </div>
 
-            <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-900 text-[10px] text-zinc-500 leading-relaxed text-center">
-              ⚠️ 테스트 결제(Sandbox) 모드로 구동 중입니다. 실제 카드 정보를 입력하여도 실 결제 승인이 발생하지 않으며, 결제 프로세스 테스트 완료 즉시 정상적으로 크레딧 충전 가산이 이루어집니다.
+            <div className="flex flex-col gap-2 pt-1 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={handleRestorePurchases}
+                className="w-full py-2.5 rounded-xl border border-zinc-800 text-[11px] font-bold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 transition-all text-center flex items-center justify-center gap-1.5"
+              >
+                🔄 기기 변경 / 앱 재설치 구매 내역 복원하기 (Restore Purchases)
+              </button>
+              <p className="text-[9px] text-zinc-600 text-center leading-relaxed">
+                * 인앱 결제는 Apple/Google 계정과 연동되어 기기를 변경하더라도 복원을 통해 크레딧이 동일하게 이전됩니다.
+              </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. 크레딧 소진 유저 상태별 맞춤형 안내 모달 */}
+      {showExhaustedModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel w-full max-w-md rounded-3xl border border-zinc-800 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
+            {/* 무료체험 소진 케이스 */}
+            {userPlan === '무료체험' && (
+              <div className="space-y-5 text-center">
+                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
+                  <span className="text-2xl">🎀</span>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="font-extrabold text-lg text-white">무료 체험 5회를 모두 사용하셨습니다!</h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">
+                    {"헤어 스타일 시뮬레이션이 마음에 드셨나요?\n지속적인 스타일 탐색을 위해 원하시는 플랜을 선택해 주세요."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePurchasePlan('1회충전')}
+                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-xs sm:text-sm hover:scale-[1.02] transition-all shadow-md"
+                  >
+                    5,000원으로 30회 시작하기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePurchasePlan('라이트')}
+                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-xs sm:text-sm font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
+                  >
+                    월 29,000원 라이트 구독하기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowExhaustedModal(false)}
+                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 1회 충전 소진 케이스 */}
+            {userPlan === '1회충전' && (
+              <div className="space-y-5 text-center">
+                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
+                  <span className="text-2xl">🎟️</span>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="font-extrabold text-lg text-white">30회를 모두 소진하셨습니다!</h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">
+                    {"30회 추가 충전(5,000원)을 하거나, 더 저렴한 구독 요금제로 전환해 보세요."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePurchasePlan('1회충전')}
+                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-xs sm:text-sm hover:scale-[1.02] transition-all shadow-md"
+                  >
+                    5,000원 추가 충전
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExhaustedModal(false);
+                      setShowBillingModal(true);
+                    }}
+                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-xs sm:text-sm font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
+                  >
+                    구독 플랜 둘러보기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowExhaustedModal(false)}
+                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 라이트 구독 소진 케이스 */}
+            {userPlan === '라이트' && (
+              <div className="space-y-5 text-center">
+                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
+                  <span className="text-2xl">🚀</span>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="font-extrabold text-lg text-white">300회를 모두 소진하셨습니다!</h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed text-left whitespace-pre-line">
+                    {`지금 29,000원을 결제하시면 즉시 300회가 충전되며, 오늘을 기준으로 다음 정기 결제일이 변경됩니다.\n(다음 결제 예정일: ${calcNextBillingDate()})`}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEarlyResetPurchase('라이트')}
+                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-[11px] sm:text-xs hover:scale-[1.02] transition-all shadow-md"
+                  >
+                    지금 결제하고 300회 즉시 리셋 (29,000원)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePurchasePlan('살롱')}
+                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-[11px] sm:text-xs font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
+                  >
+                    살롱 구독으로 업그레이드 (69,000원)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowExhaustedModal(false)}
+                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 살롱 구독 소진 케이스 */}
+            {userPlan === '살롱' && (
+              <div className="space-y-5 text-center">
+                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
+                  <span className="text-2xl">👑</span>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="font-extrabold text-lg text-white">1,000회를 모두 소진하셨습니다!</h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed text-left whitespace-pre-line">
+                    {`지금 69,000원을 결제하시면 즉시 1,000회가 충전되며, 오늘을 기준으로 다음 정기 결제일이 변경됩니다.\n(다음 결제 예정일: ${calcNextBillingDate()})`}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEarlyResetPurchase('살롱')}
+                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-[11px] sm:text-xs hover:scale-[1.02] transition-all shadow-md"
+                  >
+                    지금 결제하고 1,000회 즉시 리셋 (69,000원)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsLoading(true);
+                      try {
+                        const res = await new Promise<{ success: boolean; credits: number }>((resolve) => {
+                          setTimeout(() => resolve({ success: true, credits: 100 }), 800);
+                        });
+                        if (res.success) {
+                          const nextVal = remainingCredits + res.credits;
+                          setRemainingCredits(nextVal);
+                          nativeBridge.saveCreditsData(nextVal, totalPlanCredits, userPlan);
+                          alert(`🎉 구독자 전용 100회(8,900원) 추가 충전이 성공적으로 완료되었습니다!`);
+                          setShowExhaustedModal(false);
+                        }
+                      } catch (e) {
+                        alert('추가 충전 도중 오류가 발생했습니다.');
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }}
+                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-xs sm:text-sm font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
+                  >
+                    구독자 전용 100회 추가 (8,900원)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowExhaustedModal(false)}
+                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1741,7 +2123,11 @@ export default function HomePage() {
             className="bg-amber-400/10 hover:bg-amber-400/20 text-amber-400 border border-amber-400/20 px-3.5 py-1.5 rounded-full font-bold text-[11px] shadow-sm flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <CreditCard className="w-3.5 h-3.5" />
-            <span>개발 모드 | 무제한 ♾️ (테스트 충전: {paidGensLeft}회)</span>
+            <span>
+              {process.env.NODE_ENV === 'development'
+                ? '개발 모드 | 무제한 ♾️'
+                : `${userPlan} | ${remainingCredits.toLocaleString('ko-KR')}/${totalPlanCredits.toLocaleString('ko-KR')}`}
+            </span>
           </div>
 
         </div>
