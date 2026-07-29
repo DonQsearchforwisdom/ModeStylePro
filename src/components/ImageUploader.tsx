@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, DragEvent, ChangeEvent } from 'react';
+import React, { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 
 interface ImageUploaderProps {
   onImageSelected: (base64Image: string) => void;
@@ -11,7 +11,18 @@ interface ImageUploaderProps {
 export default function ImageUploader({ onImageSelected, onClear, previewImage }: ImageUploaderProps) {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobileQuery = window.matchMedia('(max-width: 768px)');
+      setIsMobile(mobileQuery.matches);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -132,7 +143,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/jpeg, image/png, image/webp"
+            accept="image/*"
             className="hidden"
           />
         </div>
@@ -152,7 +163,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/jpeg, image/png, image/webp"
+            accept="image/*"
             className="hidden"
           />
 
@@ -178,11 +189,14 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             </svg>
           </div>
 
-          <p className="text-zinc-200 font-medium mb-1.5 text-sm md:text-base">
-            고객 사진 드래그 앤 드롭 또는 클릭하여 업로드
+          <p className="text-zinc-200 font-medium mb-1.5 text-sm md:text-base px-2">
+            {isMobile ? '고객 사진 촬영 또는 등록하기' : '고객 사진 드래그 앤 드롭 또는 클릭하여 업로드'}
           </p>
-          <p className="text-zinc-500 text-xs max-w-[240px] leading-relaxed">
-            JPG, PNG, WebP 지원 (최대 10MB)<br />
+          <p className="text-zinc-500 text-xs max-w-[260px] leading-relaxed px-4">
+            {isMobile 
+              ? '카메라로 바로 촬영하거나 앨범에서 선택할 수 있습니다.' 
+              : 'JPG, PNG, WebP 지원 (최대 10MB)'}
+            <br />
             업로드 시 AI 처리를 위해 자동으로 최적화(1024px)됩니다.
           </p>
 

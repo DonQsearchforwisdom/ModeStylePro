@@ -305,7 +305,7 @@ export default function HomePage() {
   const totalJobsCount = selectedStyles.length + selectedRecommendations.length;
 
   // 모바일 앱 설정 상태 (상호명, 디자이너명)
-  const [salonName, setSalonName] = useState<string>('살롱오하이');
+  const [salonName, setSalonName] = useState<string>('');
   const [designerName, setDesignerName] = useState<string>('지오 디자이너');
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
@@ -739,7 +739,13 @@ export default function HomePage() {
           </div>
           <div>
             <h1 className="font-extrabold text-sm md:text-base tracking-wider text-zinc-100 flex items-center gap-1.5">
-              {salonName} <span className="text-[10px] text-zinc-400 font-normal">| ModeStyle Pro</span>
+              {salonName ? (
+                <>
+                  {salonName} <span className="text-[10px] text-zinc-400 font-normal">| ModeStyle Pro</span>
+                </>
+              ) : (
+                <span>ModeStyle Pro</span>
+              )}
             </h1>
           </div>
         </div>
@@ -824,7 +830,7 @@ export default function HomePage() {
                 onClick={() => {
                   const sInput = document.getElementById('setting-salon-input') as HTMLInputElement;
                   const dInput = document.getElementById('setting-designer-input') as HTMLInputElement;
-                  handleSaveSettings(sInput?.value || '살롱오하이', dInput?.value || '지오 디자이너');
+                  handleSaveSettings(sInput?.value || '', dInput?.value || '지오 디자이너');
                 }}
                 type="button"
                 className="flex-1 py-2.5 rounded-xl gold-bg-gradient text-zinc-950 font-bold text-xs transition-colors shadow-lg"
