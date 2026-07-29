@@ -626,7 +626,13 @@ export default function HomePage() {
     const savedDiagnosis = safeSessionStorage.getItem('modestyle_diagnosis_result');
     if (savedDiagnosis) {
       try {
-        setDiagnosisResult(JSON.parse(savedDiagnosis));
+        const parsed = JSON.parse(savedDiagnosis);
+        setDiagnosisResult(parsed);
+        // 복구 시 제안 스타일들도 모두 자동 적용 상태로 매핑 복원
+        if (parsed && parsed.recommendations && Array.isArray(parsed.recommendations)) {
+          const defaultRecs = parsed.recommendations.map((r: any) => r.styleName);
+          setSelectedRecommendations(defaultRecs);
+        }
       } catch (e) {
         console.error('진단 리포트 세션 복구 실패:', e);
       }
@@ -726,6 +732,12 @@ export default function HomePage() {
       setDiagnosisResult(data);
       // 진단 결과 동기 백업
       safeSessionStorage.setItem('modestyle_diagnosis_result', JSON.stringify(data));
+
+      // AI 제안 스타일 기본값으로 전부 자동 적용(체크)
+      if (data.recommendations && Array.isArray(data.recommendations)) {
+        const defaultRecs = data.recommendations.map((r: any) => r.styleName);
+        setSelectedRecommendations(defaultRecs);
+      }
 
       if (data.currentLength) {
         setSelectedLength(data.currentLength);
@@ -1842,7 +1854,7 @@ export default function HomePage() {
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
                     <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">2</span>
-                    {gender} 시뮬레이션 타겟 헤어 스타일 (다중 선택 가능)
+                    {gender} 헤어 스타일 (다중 선택 가능)
                   </span>
                   <span className="text-[10px] text-amber-400/80 font-medium">
                     {selectedStyles.length}개 선택됨
