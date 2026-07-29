@@ -12,6 +12,11 @@ export default function BeforeAfterSlider({ beforeImage, afterImage }: BeforeAft
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // 이미지 props 변경 시(예: 여성 예시 <-> 남성 예시 전환 시) 슬라이더 위치를 자동으로 정중앙(50%)으로 리셋
+  useEffect(() => {
+    setSliderPosition(50);
+  }, [beforeImage, afterImage]);
+
   const handleMove = (clientX: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();

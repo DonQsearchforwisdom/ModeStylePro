@@ -1211,26 +1211,26 @@ export default function HomePage() {
               </div>
 
               {/* 예시 성별 탭 추가 */}
-              <div className="flex gap-1 p-1 bg-zinc-950/80 rounded-2xl border border-zinc-800/80 mb-3.5 max-w-[170px] mx-auto lg:mx-0 shadow-inner">
+              <div className="flex gap-2 p-1.5 bg-zinc-950/80 rounded-2xl border border-zinc-800/80 mb-4 max-w-[260px] mx-auto lg:mx-0 shadow-inner">
                 <button
                   type="button"
                   onClick={() => setSampleGender('여성')}
-                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${sampleGender === '여성'
-                    ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                  className={`flex-1 py-2.5 text-xs md:text-sm font-extrabold rounded-xl transition-all ${sampleGender === '여성'
+                    ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
+                    : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                 >
-                  여성 예시
+                  여성 예시 👩
                 </button>
                 <button
                   type="button"
                   onClick={() => setSampleGender('남성')}
-                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${sampleGender === '남성'
-                    ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                  className={`flex-1 py-2.5 text-xs md:text-sm font-extrabold rounded-xl transition-all ${sampleGender === '남성'
+                    ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
+                    : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                 >
-                  남성 예시
+                  남성 예시 👨
                 </button>
               </div>
 
