@@ -241,7 +241,76 @@ interface SimulationResult {
   designOption: string;
   designCost: string;
   stylingTip: string;
+  watermarkedFile?: File;
 }
+
+// 워터마크가 합성된 이미지를 파일 객체로 미리 생성하는 유틸리티
+const createWatermarkedFile = (imageSrc: string, styleName: string, salonName: string): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // CORS 에러 방지
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas context를 생성할 수 없습니다.'));
+        return;
+      }
+
+      // 1. After 원본 이미지 그리기
+      ctx.drawImage(img, 0, 0);
+
+      // 2. 하단 그라데이션 어두운 오버레이 바 생성 (가독성 향상)
+      const barHeight = img.height * 0.07;
+      const grad = ctx.createLinearGradient(0, img.height - barHeight, 0, img.height);
+      grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      grad.addColorStop(0.3, 'rgba(0, 0, 0, 0.4)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
+
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, img.height - barHeight, img.width, barHeight);
+
+      // 3. 워터마크 텍스트 합성: ModeStylePro _ [살롱 상호명]
+      const watermarkText = salonName ? `ModeStylePro _ ${salonName}` : 'ModeStylePro';
+      const fontSize = Math.round(img.height * 0.022);
+      ctx.font = `bold ${fontSize}px 'Pretendard', sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      // 우측 하단 여백 설정
+      const paddingRight = img.width * 0.04;
+      const centerY = img.height - (barHeight / 2);
+
+      // 텍스트 섀도우 처리
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+
+      ctx.fillText(watermarkText, img.width - paddingRight, centerY);
+
+      const filePrefix = salonName ? `modestyle-${salonName}` : 'modestyle';
+      const fileName = `${filePrefix}-${styleName.replace(/\s+/g, '-')}.png`;
+
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Blob 생성 실패'));
+          return;
+        }
+        const file = new File([blob], fileName, { type: 'image/png' });
+        resolve(file);
+      }, 'image/png');
+    };
+    img.onerror = (e) => {
+      reject(e || new Error('이미지 로드 실패'));
+    };
+    img.src = imageSrc;
+  });
+};
 
 // localStorage 보안 예외 방지 안전 래퍼
 const safeLocalStorage = {
@@ -641,7 +710,17 @@ export default function HomePage() {
           stylingTip
         };
 
-        setResultsList((prev) => [newResult, ...prev]);
+        // 워터마크가 합성된 공유용 이미지 파일 사전 생성 (비동기)
+        createWatermarkedFile(data.image, job.styleName, salonName)
+          .then((file) => {
+            newResult.watermarkedFile = file;
+            setResultsList((prev) => [newResult, ...prev]);
+          })
+          .catch((err) => {
+            console.error('워터마크 이미지 사전 생성 실패:', err);
+            // 실패해도 결과 카드는 정상 노출되도록 추가
+            setResultsList((prev) => [newResult, ...prev]);
+          });
 
         // 사용 횟수 차감: 무료 횟수가 먼저 차감되고 바닥나면 유료 횟수 차감
         if (tempFreeCount > 0) {
@@ -672,7 +751,40 @@ export default function HomePage() {
   };
 
   // 피드백 반영: 다운로드 또는 공유 시 ModeStylePro 로고와 미용실 이름 워터마크 합성 처리
-  const handleShareOrDownloadItem = (image: string, styleName: string) => {
+  const handleShareOrDownloadItem = async (result: SimulationResult) => {
+    const filePrefix = salonName ? `modestyle-${salonName}` : 'modestyle';
+    const fileName = `${filePrefix}-${result.styleName.replace(/\s+/g, '-')}.png`;
+
+    // 다운로드(저장) 헬퍼 함수
+    const triggerDownload = (dataUrl: string) => {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    // 1. 이미 준비된 워터마크 파일이 있는 경우 (동기 실행으로 모바일 사용자 제스처 컨텍스트 유지)
+    if (result.watermarkedFile && navigator.share && navigator.canShare) {
+      if (navigator.canShare({ files: [result.watermarkedFile] })) {
+        try {
+          await navigator.share({
+            files: [result.watermarkedFile],
+            title: `${salonName ? salonName : 'ModeStyle Pro'} 헤어 제안서`,
+            text: `${result.styleName} 스타일 제안 이미지입니다.`
+          });
+          return; // 성공적으로 공유창이 뜨면 종료
+        } catch (error: any) {
+          if (error.name === 'AbortError') {
+            return; // 사용자가 취소한 경우 다운로드로 넘어가지 않음
+          }
+          console.error('사전 생성 파일 공유 실패, 다운로드로 대체:', error);
+        }
+      }
+    }
+
+    // 2. 파일이 준비되지 않았거나 Web Share API가 지원되지 않는 경우 동적 생성 및 다운로드(저장)
     const img = new Image();
     img.crossOrigin = 'anonymous'; // CORS 에러 방지
     img.onload = () => {
@@ -681,84 +793,46 @@ export default function HomePage() {
       canvas.height = img.height;
 
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) {
+        triggerDownload(result.afterImage);
+        return;
+      }
 
       // 1. After 원본 이미지 그리기
       ctx.drawImage(img, 0, 0);
 
-      // 2. 하단 그라데이션 어두운 오버레이 바 생성 (가독성 향상)
-      const barHeight = img.height * 0.07; // 이미지 높이의 7%
+      // 2. 하단 그라데이션 어두운 오버레이 바 생성
+      const barHeight = img.height * 0.07;
       const grad = ctx.createLinearGradient(0, img.height - barHeight, 0, img.height);
       grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
       grad.addColorStop(0.3, 'rgba(0, 0, 0, 0.4)');
       grad.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
-
       ctx.fillStyle = grad;
       ctx.fillRect(0, img.height - barHeight, img.width, barHeight);
 
-      // 3. 워터마크 텍스트 합성: ModeStylePro _ [살롱 상호명]
+      // 3. 워터마크 텍스트 합성
       const watermarkText = salonName ? `ModeStylePro _ ${salonName}` : 'ModeStylePro';
-      const fontSize = Math.round(img.height * 0.022); // 높이 대비 약 2.2% 폰트 크기
+      const fontSize = Math.round(img.height * 0.022);
       ctx.font = `bold ${fontSize}px 'Pretendard', sans-serif`;
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-
-      // 우측 하단 여백 설정
       const paddingRight = img.width * 0.04;
       const centerY = img.height - (barHeight / 2);
 
-      // 텍스트 섀도우 처리
       ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
       ctx.shadowBlur = 4;
       ctx.shadowOffsetX = 1;
       ctx.shadowOffsetY = 1;
-
       ctx.fillText(watermarkText, img.width - paddingRight, centerY);
 
-      const filePrefix = salonName ? `modestyle-${salonName}` : 'modestyle';
-      const fileName = `${filePrefix}-${styleName.replace(/\s+/g, '-')}.png`;
-
-      // 다운로드(저장) 폴백 함수
-      const fallbackDownload = () => {
-        const link = document.createElement('a');
-        link.href = canvas.toDataURL('image/png');
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      };
-
-      // 4. 모바일 기기의 기본 공유 API(Web Share API) 활용 시도
-      if (navigator.share && navigator.canShare) {
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            fallbackDownload();
-            return;
-          }
-          const file = new File([blob], fileName, { type: 'image/png' });
-          if (navigator.canShare({ files: [file] })) {
-            navigator.share({
-              files: [file],
-              title: `${salonName ? salonName : 'ModeStyle Pro'} 헤어 제안서`,
-              text: `${styleName} 스타일 제안 이미지입니다.`
-            })
-            .catch((error) => {
-              if (error.name !== 'AbortError') {
-                console.error('공유 중 오류가 발생하여 이미지 다운로드로 전환합니다:', error);
-                fallbackDownload();
-              }
-            });
-          } else {
-            fallbackDownload();
-          }
-        }, 'image/png');
-      } else {
-        // 지원하지 않는 브라우저인 경우 바로 다운로드
-        fallbackDownload();
-      }
+      // 다운로드 유도
+      triggerDownload(canvas.toDataURL('image/png'));
     };
-    img.src = image;
+    img.onerror = () => {
+      triggerDownload(result.afterImage);
+    };
+    img.src = result.afterImage;
   };
 
   // 개별 결과 삭제
@@ -1450,7 +1524,7 @@ export default function HomePage() {
                       <div className="flex flex-col sm:flex-row items-center gap-3">
                         {/* 피드백 반영: 다운로드 클릭 시 ModeStylePro + 미용실 명 워터마크 자동 합성 */}
                         <button
-                          onClick={() => handleShareOrDownloadItem(result.afterImage, result.styleName)}
+                          onClick={() => handleShareOrDownloadItem(result)}
                           type="button"
                           className="flex-1 w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-extrabold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md text-xs md:text-sm"
                         >
