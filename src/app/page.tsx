@@ -276,21 +276,21 @@ declare global {
 export default function HomePage() {
   const [gender, setGender] = useState<'여성' | '남성'>('여성');
   const [selectedLength, setSelectedLength] = useState<string>('');
-  
+
   // AI 진단 추천 시 적용할 히든 메이크업 프롬프트 (수동 적용 백업용)
   const [activeHiddenPrompt, setActiveHiddenPrompt] = useState<string | null>(null);
-  
+
   // 스타일 다중 선택
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
-  
+
   // AI 추천 스타일 다중 선택 추가
   const [selectedRecommendations, setSelectedRecommendations] = useState<string[]>([]);
-  
+
   const [originalImage, setOriginalImage] = useState<string | null>(null);
-  
+
   // 히스토리 목록
   const [resultsList, setResultsList] = useState<SimulationResult[]>([]);
-  
+
   // 헤어 AI 진단 상태
   const [isDiagnosing, setIsDiagnosing] = useState<boolean>(false);
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
@@ -372,12 +372,12 @@ export default function HomePage() {
       const addedGens = plan === '50' ? 50 : plan === '500' ? 500 : 1000;
       const currentPaid = savedPaidCount ? parseInt(savedPaidCount, 10) : 0;
       const nextPaid = currentPaid + addedGens;
-      
+
       safeLocalStorage.setItem('modestyle_paid_count', nextPaid.toString());
       setPaidGensLeft(nextPaid);
-      
+
       alert(`🎉 결제가 정상 완료되어 헤어 시뮬레이션 ${addedGens}회권이 성공적으로 충전되었습니다!`);
-      
+
       // 주소창 파라미터 삭제 정돈
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (paymentStatus === 'fail') {
@@ -506,7 +506,7 @@ export default function HomePage() {
       alert('결제 라이브러리가 아직 로드되지 않았습니다. 잠시 후 다시 눌러주세요.');
       return;
     }
-    
+
     // 토스페이먼츠 공식 테스트 클라이언트 키 (Sandbox)
     const clientKey = 'test_ck_D5b4lyZaAnpKyAGQoQ43vgFWp2N3';
     const tossPayments = window.TossPayments(clientKey);
@@ -548,7 +548,7 @@ export default function HomePage() {
 
     // 빌드 작업 큐
     const queue: Array<{ styleName: string; customPrompt: string | null }> = [];
-    
+
     // 1. 진단 추천 스타일 중 선택된 항목 추가
     if (diagnosisResult) {
       diagnosisResult.recommendations.forEach((rec) => {
@@ -560,7 +560,7 @@ export default function HomePage() {
         }
       });
     }
-    
+
     // 2. 우측 스타일 목록 중 선택된 항목 추가
     selectedStyles.forEach((styleName) => {
       queue.push({
@@ -609,10 +609,10 @@ export default function HomePage() {
 
         const endTime = performance.now();
         const duration = parseFloat(((endTime - startTime) / 1000).toFixed(1));
-        
+
         // 스타일 정보 매칭
         const matchedStyleInfo = STYLE_OPTIONS[gender].find(s => s.name === job.styleName);
-        
+
         const careOption = matchedStyleInfo?.careOption || '🧪 스타일 유지력 향상을 위한 모발 수분 단백질 케어';
         const careCost = matchedStyleInfo?.careCost || '추가 비용 : 50,000원 ~ 80,000원';
         const designOption = matchedStyleInfo?.designOption || '🧴 디자인 디테일 교정 (사이드 다운펌 / 뿌리 볼륨 디테일링)';
@@ -620,8 +620,8 @@ export default function HomePage() {
 
         // 스타일링 팁 매칭 (진단 추천 스타일에서 추출하거나 우측 리스트 프리셋에서 추출)
         const recommendedStyleInfo = diagnosisResult?.recommendations.find(r => r.styleName === job.styleName);
-        const stylingTip = recommendedStyleInfo?.stylingTip 
-          || matchedStyleInfo?.stylingTip 
+        const stylingTip = recommendedStyleInfo?.stylingTip
+          || matchedStyleInfo?.stylingTip
           || '샴푸 후 찬바람으로 건조시킨 뒤 가벼운 헤어 에센스를 발라 부스스함을 정돈해 줍니다.';
 
         // 신규 결과를 히스토리 리스트 맨 앞에 추가 (최신순 누적)
@@ -657,7 +657,7 @@ export default function HomePage() {
       } catch (err: any) {
         console.error(err);
         setErrorMsg(err.message || '시뮬레이션 생성 도중 연결 실패가 발생했습니다.');
-        break; 
+        break;
       }
     }
 
@@ -679,23 +679,23 @@ export default function HomePage() {
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
       canvas.height = img.height;
-      
+
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      
+
       // 1. After 원본 이미지 그리기
       ctx.drawImage(img, 0, 0);
-      
+
       // 2. 하단 그라데이션 어두운 오버레이 바 생성 (가독성 향상)
       const barHeight = img.height * 0.07; // 이미지 높이의 7%
       const grad = ctx.createLinearGradient(0, img.height - barHeight, 0, img.height);
       grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
       grad.addColorStop(0.3, 'rgba(0, 0, 0, 0.4)');
       grad.addColorStop(1, 'rgba(0, 0, 0, 0.8)');
-      
+
       ctx.fillStyle = grad;
       ctx.fillRect(0, img.height - barHeight, img.width, barHeight);
-      
+
       // 3. 워터마크 텍스트 합성: ModeStylePro _ [살롱 상호명]
       const watermarkText = salonName ? `ModeStylePro _ ${salonName}` : 'ModeStylePro';
       const fontSize = Math.round(img.height * 0.022); // 높이 대비 약 2.2% 폰트 크기
@@ -703,19 +703,19 @@ export default function HomePage() {
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      
+
       // 우측 하단 여백 설정
       const paddingRight = img.width * 0.04;
       const centerY = img.height - (barHeight / 2);
-      
+
       // 텍스트 섀도우 처리
       ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
       ctx.shadowBlur = 4;
       ctx.shadowOffsetX = 1;
       ctx.shadowOffsetY = 1;
-      
+
       ctx.fillText(watermarkText, img.width - paddingRight, centerY);
-      
+
       // 4. 가공된 캔버스 데이터를 다운로드로 유도
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
@@ -756,9 +756,9 @@ export default function HomePage() {
 
         {/* 상단 우측 설정 및 충전 잔량 정보 */}
         <div className="flex items-center gap-3">
-          
+
           {/* 크레딧 현황 배지 */}
-          <div 
+          <div
             onClick={() => setShowBillingModal(true)}
             className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 cursor-pointer px-3 py-1.5 rounded-full transition-all"
             title="크레딧 충전하기"
@@ -790,7 +790,7 @@ export default function HomePage() {
                 <Settings className="w-4 h-4 text-amber-400" />
                 스타일리스트 환경설정
               </h3>
-              <button 
+              <button
                 onClick={() => setShowSettings(false)}
                 className="text-zinc-500 hover:text-zinc-300"
                 type="button"
@@ -798,7 +798,7 @@ export default function HomePage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-zinc-400 text-xs font-bold block">살롱 상호명</label>
@@ -860,7 +860,7 @@ export default function HomePage() {
                   결제 즉시 유료 시뮬레이션 장수가 충전되며, 토스페이먼츠로 안전하게 결제됩니다.
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowBillingModal(false)}
                 className="text-zinc-500 hover:text-zinc-300"
                 type="button"
@@ -932,28 +932,28 @@ export default function HomePage() {
 
       {/* 메인 본문 */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-8 md:py-16 flex flex-col gap-16">
-        
+
         {/* 1. HERO SECTION */}
         <section className="flex flex-col lg:flex-row items-center gap-12 lg:gap-8">
           <div className="flex-1 space-y-6 text-center lg:text-left">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-tight text-white">
-              두상·얼굴형 분석부터<br />
-              <span className="gold-gradient">프리미엄 시술 제안까지</span>
+              헤어·얼굴형 분석부터<br />
+              <span className="gold-gradient">프리미엄 스타일 제안까지</span>
             </h2>
-            
+
             <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              디자이너의 감각을 완성하는 프리미엄 AI 파트너, ModeStyle Pro.
+              디자이너의 감각을 완성하는 프리미엄 AI 파트너
             </p>
-            
+
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
               <button
                 onClick={scrollToSimulator}
                 className="gold-bg-gradient hover:bg-gold-hover text-zinc-950 font-bold px-8 py-3.5 rounded-full shadow-lg hover:scale-105 transition-all flex items-center gap-2 group w-full sm:w-auto justify-center"
               >
-                헤어 시뮬레이션 시작하기 
+                헤어 시뮬레이션 시작하기
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
-              
+
               <div className="text-xs text-zinc-500 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800/60 font-medium flex items-center gap-1.5">
                 <span>서비스 모드:</span>
                 <span className="text-amber-400 font-extrabold">개발용 무제한 ♾️</span>
@@ -973,27 +973,25 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setSampleGender('여성')}
-                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${
-                    sampleGender === '여성'
-                      ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
+                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${sampleGender === '여성'
+                    ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
                 >
                   여성 예시
                 </button>
                 <button
                   type="button"
                   onClick={() => setSampleGender('남성')}
-                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${
-                    sampleGender === '남성'
-                      ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
+                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${sampleGender === '남성'
+                    ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
                 >
                   남성 예시
                 </button>
               </div>
-              
+
               {/* 샘플 Before/After 슬라이더 */}
               <BeforeAfterSlider
                 beforeImage={sampleGender === '여성' ? '/sample-before.jpg' : '/sample-male-before.jpg'}
@@ -1004,8 +1002,8 @@ export default function HomePage() {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400">시뮬레이션 스타일</span>
                   <span className="text-amber-400 font-bold">
-                    {sampleGender === '여성' 
-                      ? '여성 중단발 빌드펌 & 볼륨 레이어드 ✨' 
+                    {sampleGender === '여성'
+                      ? '여성 중단발 빌드펌 & 볼륨 레이어드 ✨'
                       : '남성 쉐도우 애즈펌 & 다운펌 ✨'}
                   </span>
                 </div>
@@ -1026,22 +1024,21 @@ export default function HomePage() {
 
         {/* 2. TOOL SECTION */}
         <section ref={simulatorRef} id="simulator" className="space-y-8 scroll-mt-24">
-          
+
           <div className="max-w-xl mx-auto text-center space-y-4">
             <h3 className="text-2xl md:text-3xl font-extrabold text-white">AI 스타일링 랩 (Styling Lab)</h3>
             <p className="text-zinc-500 text-xs md:text-sm">
-              시뮬레이션을 시작할 성별을 선택해 주세요.
+              시뮬레이션할 성별을 선택해 주세요.
             </p>
-            
+
             <div className="inline-grid grid-cols-2 gap-2 bg-zinc-900/80 p-1.5 rounded-2xl border border-zinc-800 max-w-sm w-full shadow-lg">
               <button
                 type="button"
                 onClick={() => setGender('여성')}
-                className={`py-3 px-6 text-xs md:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
-                  gender === '여성'
-                    ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
+                className={`py-3 px-6 text-xs md:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${gender === '여성'
+                  ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
+                  : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
               >
                 <Venus className="w-4 h-4" />
                 여성 (Female)
@@ -1049,11 +1046,10 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => setGender('남성')}
-                className={`py-3 px-6 text-xs md:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
-                  gender === '남성'
-                    ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
+                className={`py-3 px-6 text-xs md:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${gender === '남성'
+                  ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
+                  : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
               >
                 <Mars className="w-4 h-4" />
                 남성 (Male)
@@ -1062,7 +1058,7 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
+
             {/* 좌측 입력 칼럼: 업로더 & AI 진단 */}
             <div className="lg:col-span-5 space-y-6">
               <div className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-3">
@@ -1070,7 +1066,7 @@ export default function HomePage() {
                   <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">1</span>
                   고객 사진 업로드
                 </span>
-                
+
                 <ImageUploader
                   onImageSelected={handleImageSelected}
                   onClear={handleClearImage}
@@ -1116,7 +1112,7 @@ export default function HomePage() {
                         <span className="text-zinc-400 text-[10px] font-bold block uppercase tracking-wider">
                           💡 AI 추천 스타일 TOP 3 (상담 매칭)
                         </span>
-                        
+
                         <div className="space-y-2">
                           {diagnosisResult.recommendations.map((rec, idx) => {
                             const isChecked = selectedRecommendations.includes(rec.styleName);
@@ -1124,35 +1120,32 @@ export default function HomePage() {
                               <div
                                 key={rec.styleName + idx}
                                 onClick={() => handleRecommendationToggle(rec)}
-                                className={`border p-3.5 rounded-xl transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 cursor-pointer ${
-                                  isChecked
-                                    ? 'bg-amber-400/5 border-amber-400 text-amber-400 shadow-sm'
-                                    : 'bg-zinc-900/40 border-zinc-850 hover:bg-zinc-900/70 text-zinc-300'
-                                }`}
+                                className={`border p-3.5 rounded-xl transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 cursor-pointer ${isChecked
+                                  ? 'bg-amber-400/5 border-amber-400 text-amber-400 shadow-sm'
+                                  : 'bg-zinc-900/40 border-zinc-850 hover:bg-zinc-900/70 text-zinc-300'
+                                  }`}
                               >
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2">
-                                    <span className={`w-4 h-4 rounded-full text-[9px] font-extrabold flex items-center justify-center ${
-                                      isChecked ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-900 text-amber-400 border border-zinc-850'
-                                    }`}>
+                                    <span className={`w-4 h-4 rounded-full text-[9px] font-extrabold flex items-center justify-center ${isChecked ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-900 text-amber-400 border border-zinc-850'
+                                      }`}>
                                       {idx + 1}
                                     </span>
                                     <span className={`text-xs font-bold ${isChecked ? 'text-amber-400' : 'text-zinc-200'}`}>{rec.styleName}</span>
                                   </div>
                                   <p className={`text-[10px] leading-normal max-w-xs ${isChecked ? 'text-amber-400/70' : 'text-zinc-500'}`}>{rec.reason}</p>
                                 </div>
-                                
+
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleRecommendationToggle(rec);
                                   }}
-                                  className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 ${
-                                    isChecked
-                                      ? 'bg-amber-400 text-zinc-950 font-extrabold shadow-sm'
-                                      : 'text-amber-400 hover:text-zinc-950 hover:bg-amber-400 border border-amber-400/20 hover:border-amber-400 bg-amber-400/5'
-                                  }`}
+                                  className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shrink-0 ${isChecked
+                                    ? 'bg-amber-400 text-zinc-950 font-extrabold shadow-sm'
+                                    : 'text-amber-400 hover:text-zinc-950 hover:bg-amber-400 border border-amber-400/20 hover:border-amber-400 bg-amber-400/5'
+                                    }`}
                                 >
                                   {isChecked ? (
                                     <>
@@ -1182,25 +1175,24 @@ export default function HomePage() {
 
             {/* 우측 입력 칼럼: 모발 길이 및 다중 스타일 선택 */}
             <div className="lg:col-span-7 space-y-6">
-              
+
               {/* Step 3: Hair Length Chips */}
               <div className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-3">
                 <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
                   <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">2</span>
                   목표 모발 길이 & 타입
                 </span>
-                
+
                 <div className="flex flex-wrap gap-2">
                   {LENGTH_OPTIONS[gender].map((len) => (
                     <button
                       key={len}
                       type="button"
                       onClick={() => setSelectedLength(len)}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                        selectedLength === len
-                          ? 'bg-amber-400/10 border-amber-400 text-amber-400 shadow-sm'
-                          : 'bg-zinc-900/50 border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                      }`}
+                      className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${selectedLength === len
+                        ? 'bg-amber-400/10 border-amber-400 text-amber-400 shadow-sm'
+                        : 'bg-zinc-900/50 border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                        }`}
                     >
                       {len}
                     </button>
@@ -1213,13 +1205,13 @@ export default function HomePage() {
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
                     <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">3</span>
-                    시뮬레이션 타겟 헤어 스타일 (다중 선택 가능)
+                    {gender} 시뮬레이션 타겟 헤어 스타일 (다중 선택 가능)
                   </span>
                   <span className="text-[10px] text-amber-400/80 font-medium">
                     {selectedStyles.length}개 선택됨
                   </span>
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {STYLE_OPTIONS[gender].map((style) => {
                     const isChecked = selectedStyles.includes(style.name);
@@ -1227,11 +1219,10 @@ export default function HomePage() {
                       <div
                         key={style.name}
                         onClick={() => handleStyleToggle(style.name)}
-                        className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 group relative cursor-pointer ${
-                          isChecked
-                            ? 'bg-amber-400/5 border-amber-400 text-amber-400 shadow-sm'
-                            : 'bg-zinc-900/30 border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-300'
-                        }`}
+                        className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 group relative cursor-pointer ${isChecked
+                          ? 'bg-amber-400/5 border-amber-400 text-amber-400 shadow-sm'
+                          : 'bg-zinc-900/30 border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-300'
+                          }`}
                         role="button"
                         tabIndex={0}
                       >
@@ -1239,22 +1230,21 @@ export default function HomePage() {
                           <span className="text-xs font-bold flex items-center gap-2.5">
                             <div className="w-10 h-10 rounded-lg overflow-hidden border border-zinc-850 bg-zinc-950 shrink-0 relative">
                               <img
-                                  src={style.image}
-                                  alt={style.name}
-                                  className="w-full h-full object-cover"
+                                src={style.image}
+                                alt={style.name}
+                                className="w-full h-full object-cover"
                               />
                             </div>
                             {style.name}
                           </span>
-                          <span className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
-                            isChecked 
-                              ? 'border-amber-400 bg-amber-400 text-zinc-950' 
-                              : 'border-zinc-700'
-                          }`}>
+                          <span className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${isChecked
+                            ? 'border-amber-400 bg-amber-400 text-zinc-950'
+                            : 'border-zinc-700'
+                            }`}>
                             {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
                           </span>
                         </div>
-                        
+
                         <div className="text-[10px] text-zinc-500 leading-tight flex items-center gap-1 mt-1">
                           <Coins className="w-3 h-3 text-amber-500/70 shrink-0" />
                           <span>{style.upsell}</span>
@@ -1278,18 +1268,17 @@ export default function HomePage() {
                   onClick={handleGenerate}
                   disabled={isLoading}
                   type="button"
-                  className={`w-full py-4 rounded-2xl font-extrabold text-sm md:text-base flex items-center justify-center gap-2 shadow-lg transition-all ${
-                    isLoading
-                      ? 'bg-zinc-900 border border-zinc-800 text-zinc-500 cursor-not-allowed'
-                      : 'gold-bg-gradient hover:scale-[1.01] text-zinc-950 shadow-amber-400/5'
-                  }`}
+                  className={`w-full py-4 rounded-2xl font-extrabold text-sm md:text-base flex items-center justify-center gap-2 shadow-lg transition-all ${isLoading
+                    ? 'bg-zinc-900 border border-zinc-800 text-zinc-500 cursor-not-allowed'
+                    : 'gold-bg-gradient hover:scale-[1.01] text-zinc-950 shadow-amber-400/5'
+                    }`}
                 >
                   {isLoading ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
                       <span>
-                        {totalJobsCount > 1 
-                          ? `[${totalJobsCount}개 중 ${currentGeneratingIndex! + 1}번째 스타일] ` 
+                        {totalJobsCount > 1
+                          ? `[${totalJobsCount}개 중 ${currentGeneratingIndex! + 1}번째 스타일] `
                           : ''}
                         {LOADING_MESSAGES[loadingMessageIndex]}
                       </span>
@@ -1312,15 +1301,15 @@ export default function HomePage() {
                   <div className="w-16 h-16 rounded-full border-4 border-amber-400/20 border-t-amber-400 animate-spin" />
                   <div className="space-y-2 text-center w-full max-w-xs">
                     <p className="text-zinc-200 font-bold text-sm">
-                      {totalJobsCount > 1 
-                        ? `전체 ${totalJobsCount}개 스타일 중 ${currentGeneratingIndex! + 1}번째 진행 중...` 
+                      {totalJobsCount > 1
+                        ? `전체 ${totalJobsCount}개 스타일 중 ${currentGeneratingIndex! + 1}번째 진행 중...`
                         : 'AI 헤어 스타일 변환 중...'}
                     </p>
-                    
+
                     {totalJobsCount > 1 && (
                       <div className="w-full bg-zinc-950 rounded-full h-1.5 mt-2 border border-zinc-800">
-                        <div 
-                          className="bg-amber-400 h-1.5 rounded-full transition-all duration-500" 
+                        <div
+                          className="bg-amber-400 h-1.5 rounded-full transition-all duration-500"
                           style={{ width: `${((currentGeneratingIndex!) / totalJobsCount) * 100}%` }}
                         />
                       </div>
@@ -1351,8 +1340,8 @@ export default function HomePage() {
 
             <div className="space-y-8">
               {resultsList.map((result) => (
-                <div 
-                  key={result.id} 
+                <div
+                  key={result.id}
                   className="glass-panel p-6 md:p-8 rounded-3xl border border-zinc-800 shadow-2xl space-y-6 relative transition-all duration-300 hover:border-zinc-700"
                 >
                   {/* 삭제 버튼 */}
@@ -1371,14 +1360,14 @@ export default function HomePage() {
                         {result.gender} {result.length} <span className="text-amber-400 font-extrabold">‘{result.styleName}’</span> 제안서
                       </h4>
                     </div>
-                    
+
                     <div className="text-xs bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-400 shrink-0 self-start md:self-auto">
                       ⏱️ 소요 시간: <span className="text-amber-400 font-bold">{result.generationTime}초</span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-                    
+
                     {/* BeforeAfterSlider 렌더 */}
                     <div className="lg:col-span-5 max-w-sm mx-auto w-full">
                       <BeforeAfterSlider
@@ -1389,18 +1378,18 @@ export default function HomePage() {
 
                     {/* 스타일별 가변 옵션화 */}
                     <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
-                      
+
                       <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-3 text-left">
                         <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                           📋 맞춤 추천 스타일링 옵션
                         </span>
-                        
+
                         <div className="grid grid-cols-1 gap-2 text-xs text-zinc-400">
                           <div className="flex items-start justify-between p-2 bg-zinc-900/60 rounded-lg">
                             <span>💡 <strong>{result.styleName}</strong> 헤어 디자인 시술</span>
                             <span className="text-zinc-300 font-bold">기본 시술</span>
                           </div>
-                          
+
                           {/* 스타일별 맞춤 케어 2,3번 분리 및 "예상" 단어 배제 */}
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2 bg-zinc-900/60 rounded-lg gap-1">
                             <span>{result.careOption}</span>
@@ -1450,14 +1439,14 @@ export default function HomePage() {
       {/* 푸터 및 카운트 배지 */}
       <footer className="mt-auto border-t border-zinc-900 py-6 px-4 md:px-8 bg-zinc-950">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
-          
+
           <div className="flex items-center gap-4 text-zinc-500">
             <span>© 2026 {salonName}. All rights reserved. Powered by ModeStyle Pro</span>
             <span className="hidden md:inline">|</span>
             <span>이미지 1장 원가 약 70원 · Nano Banana 2 기준</span>
           </div>
 
-          <div 
+          <div
             onClick={() => setShowBillingModal(true)}
             className="bg-amber-400/10 hover:bg-amber-400/20 text-amber-400 border border-amber-400/20 px-3.5 py-1.5 rounded-full font-bold text-[11px] shadow-sm flex items-center gap-1.5 cursor-pointer transition-colors"
           >
