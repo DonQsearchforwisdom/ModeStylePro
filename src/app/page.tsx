@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ImageUploader from '@/components/ImageUploader';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
-import { Sparkles, ArrowRight, Download, RefreshCw, Key, ShieldCheck, HelpCircle, Activity, User, Check, Trash2, Settings, CreditCard, X, Venus, Mars, Coins } from 'lucide-react';
+import { Sparkles, ArrowRight, Download, Share2, RefreshCw, Key, ShieldCheck, HelpCircle, Activity, User, Check, Trash2, Settings, CreditCard, X, Venus, Mars, Coins } from 'lucide-react';
 
 interface StyleItem {
   name: string;
@@ -671,8 +671,8 @@ export default function HomePage() {
     }, 300);
   };
 
-  // 피드백 반영: 다운로드 시 ModeStylePro 로고와 미용실 이름 워터마크 합성 처리
-  const handleDownloadItem = (image: string, styleName: string) => {
+  // 피드백 반영: 다운로드 또는 공유 시 ModeStylePro 로고와 미용실 이름 워터마크 합성 처리
+  const handleShareOrDownloadItem = (image: string, styleName: string) => {
     const img = new Image();
     img.crossOrigin = 'anonymous'; // CORS 에러 방지
     img.onload = () => {
@@ -716,14 +716,47 @@ export default function HomePage() {
 
       ctx.fillText(watermarkText, img.width - paddingRight, centerY);
 
-      // 4. 가공된 캔버스 데이터를 다운로드로 유도
-      const link = document.createElement('a');
-      link.href = canvas.toDataURL('image/png');
       const filePrefix = salonName ? `modestyle-${salonName}` : 'modestyle';
-      link.download = `${filePrefix}-${styleName.replace(/\s+/g, '-')}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const fileName = `${filePrefix}-${styleName.replace(/\s+/g, '-')}.png`;
+
+      // 다운로드(저장) 폴백 함수
+      const fallbackDownload = () => {
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      // 4. 모바일 기기의 기본 공유 API(Web Share API) 활용 시도
+      if (navigator.share && navigator.canShare) {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            fallbackDownload();
+            return;
+          }
+          const file = new File([blob], fileName, { type: 'image/png' });
+          if (navigator.canShare({ files: [file] })) {
+            navigator.share({
+              files: [file],
+              title: `${salonName ? salonName : 'ModeStyle Pro'} 헤어 제안서`,
+              text: `${styleName} 스타일 제안 이미지입니다.`
+            })
+            .catch((error) => {
+              if (error.name !== 'AbortError') {
+                console.error('공유 중 오류가 발생하여 이미지 다운로드로 전환합니다:', error);
+                fallbackDownload();
+              }
+            });
+          } else {
+            fallbackDownload();
+          }
+        }, 'image/png');
+      } else {
+        // 지원하지 않는 브라우저인 경우 바로 다운로드
+        fallbackDownload();
+      }
     };
     img.src = image;
   };
@@ -1417,12 +1450,12 @@ export default function HomePage() {
                       <div className="flex flex-col sm:flex-row items-center gap-3">
                         {/* 피드백 반영: 다운로드 클릭 시 ModeStylePro + 미용실 명 워터마크 자동 합성 */}
                         <button
-                          onClick={() => handleDownloadItem(result.afterImage, result.styleName)}
+                          onClick={() => handleShareOrDownloadItem(result.afterImage, result.styleName)}
                           type="button"
                           className="flex-1 w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-extrabold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md text-xs md:text-sm"
                         >
-                          <Download className="w-4 h-4" />
-                          이미지 다운로드
+                          <Share2 className="w-4 h-4" />
+                          이미지 제안서 공유하기
                         </button>
                       </div>
                     </div>
