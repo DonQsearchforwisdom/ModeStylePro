@@ -426,12 +426,91 @@ export default function HomePage() {
     safeSessionStorage.setItem('modestyle_gender', gender);
   }, [gender]);
 
+  // 1. originalImage 변경 시 sessionStorage 백업
+  useEffect(() => {
+    if (originalImage) {
+      safeSessionStorage.setItem('modestyle_original_image', originalImage);
+    } else {
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          sessionStorage.removeItem('modestyle_original_image');
+        }
+      } catch (e) {}
+    }
+  }, [originalImage]);
+
+  // 2. diagnosisResult 변경 시 sessionStorage 백업
+  useEffect(() => {
+    if (diagnosisResult) {
+      safeSessionStorage.setItem('modestyle_diagnosis_result', JSON.stringify(diagnosisResult));
+    } else {
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          sessionStorage.removeItem('modestyle_diagnosis_result');
+        }
+      } catch (e) {}
+    }
+  }, [diagnosisResult]);
+
+  // 3. resultsList 변경 시 sessionStorage 백업 (File 객체 제외하고 JSON 직렬화)
+  useEffect(() => {
+    if (resultsList.length > 0) {
+      const serializedList = resultsList.map(({ watermarkedFile, ...rest }) => rest);
+      safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
+    } else {
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          sessionStorage.removeItem('modestyle_results_list');
+        }
+      } catch (e) {}
+    }
+  }, [resultsList]);
+
   // 로컬스토리지 정보 마운트 시 로드 및 일일 무료 5회 리셋 처리
   useEffect(() => {
-    // 0. 성별 정보 복구
+    // 0-1. 성별 정보 복구
     const savedGender = safeSessionStorage.getItem('modestyle_gender');
     if (savedGender === '여성' || savedGender === '남성') {
       setGender(savedGender);
+    }
+
+    // 0-2. 업로드된 원본 이미지 복구
+    const savedOriginalImage = safeSessionStorage.getItem('modestyle_original_image');
+    if (savedOriginalImage) {
+      setOriginalImage(savedOriginalImage);
+    }
+
+    // 0-3. AI 실시간 진단 리포트 복구
+    const savedDiagnosis = safeSessionStorage.getItem('modestyle_diagnosis_result');
+    if (savedDiagnosis) {
+      try {
+        setDiagnosisResult(JSON.parse(savedDiagnosis));
+      } catch (e) {
+        console.error('진단 리포트 세션 복구 실패:', e);
+      }
+    }
+
+    // 0-4. 제안서 목록(resultsList) 복구 및 워터마크 파일 백그라운드 재생성
+    const savedResults = safeSessionStorage.getItem('modestyle_results_list');
+    const tempSalonName = safeLocalStorage.getItem('modestyle_salon_name') || '';
+    if (savedResults) {
+      try {
+        const parsedList: SimulationResult[] = JSON.parse(savedResults);
+        setResultsList(parsedList);
+
+        // 백그라운드에서 워터마크 파일 비동기 재생성하여 매핑
+        parsedList.forEach((item) => {
+          createWatermarkedFile(item.afterImage, item.styleName, tempSalonName)
+            .then((file) => {
+              setResultsList((prev) =>
+                prev.map((p) => (p.id === item.id ? { ...p, watermarkedFile: file } : p))
+              );
+            })
+            .catch((err) => console.error('마운트 시 워터마크 재생성 실패:', err));
+        });
+      } catch (e) {
+        console.error('결과 리스트 세션 복구 실패:', e);
+      }
     }
 
     // 1. 살롱 설정 정보 로드
