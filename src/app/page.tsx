@@ -335,6 +335,29 @@ const safeLocalStorage = {
   }
 };
 
+// sessionStorage 보안 예외 방지 안전 래퍼
+const safeSessionStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        return sessionStorage.getItem(key);
+      }
+    } catch (e) {
+      console.warn('sessionStorage getItem failed:', e);
+    }
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.setItem(key, value);
+      }
+    } catch (e) {
+      console.warn('sessionStorage setItem failed:', e);
+    }
+  }
+};
+
 // Toss Payments 결제창을 위한 글로벌 타입 보강
 declare global {
   interface Window {
@@ -389,7 +412,7 @@ export default function HomePage() {
   const simulatorRef = useRef<HTMLDivElement>(null);
   const stylesSectionRef = useRef<HTMLDivElement>(null);
 
-  // 성별 변경 시 기장과 스타일 초기화
+  // 성별 변경 시 기장과 스타일 초기화 및 sessionStorage에 성별 백업
   useEffect(() => {
     setSelectedLength(LENGTH_OPTIONS[gender][0]);
     setSelectedStyles([STYLE_OPTIONS[gender][0].name]);
@@ -397,10 +420,17 @@ export default function HomePage() {
     setActiveHiddenPrompt(null);
     setDiagnosisResult(null);
     setDiagnosisError(null);
+    safeSessionStorage.setItem('modestyle_gender', gender);
   }, [gender]);
 
   // 로컬스토리지 정보 마운트 시 로드 및 일일 무료 5회 리셋 처리
   useEffect(() => {
+    // 0. 성별 정보 복구
+    const savedGender = safeSessionStorage.getItem('modestyle_gender');
+    if (savedGender === '여성' || savedGender === '남성') {
+      setGender(savedGender);
+    }
+
     // 1. 살롱 설정 정보 로드
     const savedSalon = safeLocalStorage.getItem('modestyle_salon_name');
     if (savedSalon) setSalonName(savedSalon);
@@ -1132,45 +1162,55 @@ export default function HomePage() {
         {/* 2. TOOL SECTION */}
         <section ref={simulatorRef} id="simulator" className="space-y-8 scroll-mt-24">
 
-          <div className="max-w-xl mx-auto text-center space-y-4">
+          <div className="max-w-xl mx-auto text-center space-y-2">
             <h3 className="text-2xl md:text-3xl font-extrabold text-white">AI 스타일링 랩 (Styling Lab)</h3>
             <p className="text-zinc-500 text-xs md:text-sm">
-              시뮬레이션할 성별을 선택해 주세요.
+              고객님의 성별과 사진을 등록하여 시뮬레이션을 준비해 주세요.
             </p>
-
-            <div className="inline-grid grid-cols-2 gap-2 bg-zinc-900/80 p-1.5 rounded-2xl border border-zinc-800 max-w-sm w-full shadow-lg">
-              <button
-                type="button"
-                onClick={() => setGender('여성')}
-                className={`py-3 px-6 text-xs md:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${gender === '여성'
-                  ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
-                  : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-              >
-                <Venus className="w-4 h-4" />
-                여성 (Female)
-              </button>
-              <button
-                type="button"
-                onClick={() => setGender('남성')}
-                className={`py-3 px-6 text-xs md:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${gender === '남성'
-                  ? 'bg-zinc-800 text-amber-400 shadow-md border border-zinc-700/50'
-                  : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-              >
-                <Mars className="w-4 h-4" />
-                남성 (Male)
-              </button>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
-            {/* 좌측 입력 칼럼: 업로더 & AI 진단 */}
+            {/* 좌측 입력 칼럼: 성별 선택, 업로더 & AI 진단 */}
             <div className="lg:col-span-5 space-y-6">
-              <div className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-3">
-                <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
+
+              {/* 1. 고객 성별 선택 */}
+              <div className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-4">
+                <span className="text-zinc-300 text-sm font-bold flex items-center gap-1.5">
                   <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">1</span>
+                  고객 성별 선택
+                </span>
+
+                <div className="grid grid-cols-2 gap-2 bg-zinc-950/80 p-1.5 rounded-xl border border-zinc-900 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setGender('여성')}
+                    className={`py-3 px-6 text-xs md:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${gender === '여성'
+                      ? 'bg-zinc-850 text-amber-400 shadow-md border border-zinc-700/50'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                  >
+                    <Venus className="w-4 h-4" />
+                    여성 (Female)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGender('남성')}
+                    className={`py-3 px-6 text-xs md:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${gender === '남성'
+                      ? 'bg-zinc-850 text-amber-400 shadow-md border border-zinc-700/50'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                  >
+                    <Mars className="w-4 h-4" />
+                    남성 (Male)
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. 고객 사진 업로드 */}
+              <div className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-3">
+                <span className="text-zinc-300 text-sm font-bold flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">2</span>
                   고객 사진 업로드
                 </span>
 
@@ -1205,18 +1245,18 @@ export default function HomePage() {
                       {/* 얼굴형 및 모질 진단 칩 */}
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="bg-zinc-950/80 border border-zinc-850 p-2.5 rounded-xl">
-                          <span className="text-zinc-500 text-[10px] block mb-0.5">얼굴형 진단</span>
-                          <span className="text-zinc-200 font-bold">👤 {diagnosisResult.faceShape}</span>
+                          <span className="text-zinc-400 text-xs block mb-0.5 font-bold">얼굴형 진단</span>
+                          <span className="text-zinc-100 font-extrabold text-sm">👤 {diagnosisResult.faceShape}</span>
                         </div>
                         <div className="bg-zinc-950/80 border border-zinc-850 p-2.5 rounded-xl">
-                          <span className="text-zinc-500 text-[10px] block mb-0.5">두상 및 모질 상태</span>
-                          <span className="text-zinc-200 font-bold">💇 {diagnosisResult.hairCondition}</span>
+                          <span className="text-zinc-400 text-xs block mb-0.5 font-bold">두상 및 모질 상태</span>
+                          <span className="text-zinc-100 font-extrabold text-sm">💇 {diagnosisResult.hairCondition}</span>
                         </div>
                       </div>
 
                       {/* TOP 3 추천 스타일 */}
                       <div className="space-y-2.5">
-                        <span className="text-zinc-400 text-[10px] font-bold block uppercase tracking-wider">
+                        <span className="text-zinc-300 text-xs font-bold block uppercase tracking-wider">
                           💡 AI 추천 스타일 TOP 3 (상담 매칭)
                         </span>
 
@@ -1238,9 +1278,9 @@ export default function HomePage() {
                                       }`}>
                                       {idx + 1}
                                     </span>
-                                    <span className={`text-xs font-bold ${isChecked ? 'text-amber-400' : 'text-zinc-200'}`}>{rec.styleName}</span>
+                                    <span className={`text-sm font-extrabold ${isChecked ? 'text-amber-400' : 'text-zinc-100'}`}>{rec.styleName}</span>
                                   </div>
-                                  <p className={`text-[10px] leading-normal max-w-xs ${isChecked ? 'text-amber-400/70' : 'text-zinc-500'}`}>{rec.reason}</p>
+                                  <p className={`text-xs leading-normal max-w-xs ${isChecked ? 'text-amber-300 font-medium' : 'text-zinc-300'}`}>{rec.reason}</p>
                                 </div>
 
                                 <button
@@ -1487,24 +1527,24 @@ export default function HomePage() {
                     <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
 
                       <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-3 text-left">
-                        <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <span className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
                           📋 맞춤 추천 스타일링 옵션
                         </span>
 
-                        <div className="grid grid-cols-1 gap-2 text-xs text-zinc-400">
-                          <div className="flex items-start justify-between p-2 bg-zinc-900/60 rounded-lg">
-                            <span>💡 <strong>{result.styleName}</strong> 헤어 디자인 시술</span>
-                            <span className="text-zinc-300 font-bold">기본 시술</span>
+                        <div className="grid grid-cols-1 gap-2 text-sm text-zinc-200">
+                          <div className="flex items-start justify-between p-2.5 bg-zinc-900/60 rounded-lg">
+                            <span>💡 <strong className="text-white">{result.styleName}</strong> 헤어 디자인 시술</span>
+                            <span className="text-zinc-100 font-extrabold">기본 시술</span>
                           </div>
 
                           {/* 스타일별 맞춤 케어 2,3번 분리 및 "예상" 단어 배제 */}
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2 bg-zinc-900/60 rounded-lg gap-1">
-                            <span>{result.careOption}</span>
-                            <span className="text-amber-400 font-bold font-mono shrink-0">{result.careCost}</span>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-zinc-900/60 rounded-lg gap-1">
+                            <span className="text-zinc-100">{result.careOption}</span>
+                            <span className="text-amber-300 font-extrabold font-mono shrink-0">{result.careCost}</span>
                           </div>
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2 bg-zinc-900/60 rounded-lg gap-1">
-                            <span>{result.designOption}</span>
-                            <span className="text-amber-400 font-bold font-mono shrink-0">{result.designCost}</span>
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-zinc-900/60 rounded-lg gap-1">
+                            <span className="text-zinc-100">{result.designOption}</span>
+                            <span className="text-amber-300 font-extrabold font-mono shrink-0">{result.designCost}</span>
                           </div>
                         </div>
                       </div>
@@ -1512,10 +1552,10 @@ export default function HomePage() {
                       {/* 홈 스타일링 방법 가이드 섹션 추가 */}
                       {result.stylingTip && (
                         <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-2 text-left">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                          <span className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
                             🧴 홈 스타일링 & 관리 가이드
                           </span>
-                          <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">
+                          <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-line">
                             {result.stylingTip}
                           </p>
                         </div>

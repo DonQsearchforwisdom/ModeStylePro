@@ -43,55 +43,55 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
       return;
     }
 
-    // 용량 제한 (10MB)
-    const maxSize = 10 * 1024 * 1024;
+    // 용량 제한 (15MB)
+    const maxSize = 15 * 1024 * 1024;
     if (file.size > maxSize) {
-      setError('파일 용량이 10MB를 초과합니다. 더 작은 이미지를 선택해 주세요.');
+      setError('파일 용량이 15MB를 초과합니다. 더 작은 이미지를 선택해 주세요.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        // Canvas를 이용해 이미지 리사이징 (최대 긴 축 1024px)
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH_HEIGHT = 1024;
-        let width = img.width;
-        let height = img.height;
+    // OOM 방지를 위해 FileReader 대신 URL.createObjectURL을 사용하여 메모리 사용량 최소화
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      // Canvas를 이용해 이미지 리사이징 (최대 긴 축 1024px)
+      const canvas = document.createElement('canvas');
+      const MAX_WIDTH_HEIGHT = 1024;
+      let width = img.width;
+      let height = img.height;
 
-        if (width > height) {
-          if (width > MAX_WIDTH_HEIGHT) {
-            height = Math.round((height * MAX_WIDTH_HEIGHT) / width);
-            width = MAX_WIDTH_HEIGHT;
-          }
-        } else {
-          if (height > MAX_WIDTH_HEIGHT) {
-            width = Math.round((width * MAX_WIDTH_HEIGHT) / height);
-            height = MAX_WIDTH_HEIGHT;
-          }
+      if (width > height) {
+        if (width > MAX_WIDTH_HEIGHT) {
+          height = Math.round((height * MAX_WIDTH_HEIGHT) / width);
+          width = MAX_WIDTH_HEIGHT;
         }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          // 퀄리티 0.85로 JPG 혹은 PNG로 base64 변환
-          // 원본 타입 유지를 시도하나, 캔버스 처리 후 일반적으로 image/jpeg가 효율적
-          const resizedBase64 = canvas.toDataURL('image/jpeg', 0.85);
-          onImageSelected(resizedBase64);
-        } else {
-          setError('이미지 처리 중 오류가 발생했습니다.');
+      } else {
+        if (height > MAX_WIDTH_HEIGHT) {
+          width = Math.round((width * MAX_WIDTH_HEIGHT) / height);
+          height = MAX_WIDTH_HEIGHT;
         }
-      };
-      img.onerror = () => {
-        setError('유효하지 않은 이미지 파일입니다.');
-      };
-      img.src = e.target?.result as string;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        // 퀄리티 0.85로 JPG base64 변환
+        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        onImageSelected(resizedBase64);
+      } else {
+        setError('이미지 처리 중 오류가 발생했습니다.');
+      }
+      // 즉시 메모리 해제
+      URL.revokeObjectURL(objectUrl);
     };
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      setError('유효하지 않은 이미지 파일입니다.');
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.src = objectUrl;
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
