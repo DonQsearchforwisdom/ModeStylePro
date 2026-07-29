@@ -309,6 +309,9 @@ export default function HomePage() {
   const [designerName, setDesignerName] = useState<string>('지오 디자이너');
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
+  // 샘플 Before/After 시연 성별 선택 상태
+  const [sampleGender, setSampleGender] = useState<'여성' | '남성'>('여성');
+
   // 비즈니스 과금 상태 (하루 5회 무료 제공 & 유료 충전 크레딧)
   const [freeGensLeft, setFreeGensLeft] = useState<number>(5);
   const [paidGensLeft, setPaidGensLeft] = useState<number>(0);
@@ -960,24 +963,59 @@ export default function HomePage() {
 
           {/* Before / After 샘플 시연 카드 */}
           <div className="w-full max-w-sm lg:max-w-md shrink-0">
-            <div className="glass-panel p-4 rounded-3xl border border-zinc-800/80 shadow-2xl relative">
+            <div className="glass-panel p-4 rounded-3xl border border-zinc-800/80 shadow-2xl relative flex flex-col">
               <div className="absolute -top-3.5 -right-3.5 bg-amber-400 text-zinc-950 text-[10px] font-bold tracking-wider px-3 py-1 rounded-full uppercase shadow-lg shadow-amber-400/20">
                 AI 시뮬레이션 예시
               </div>
+
+              {/* 예시 성별 탭 추가 */}
+              <div className="flex gap-1 p-1 bg-zinc-950/80 rounded-2xl border border-zinc-800/80 mb-3.5 max-w-[170px] mx-auto lg:mx-0 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setSampleGender('여성')}
+                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${
+                    sampleGender === '여성'
+                      ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  여성 예시
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSampleGender('남성')}
+                  className={`flex-1 py-1.5 text-[10px] font-bold rounded-xl transition-all ${
+                    sampleGender === '남성'
+                      ? 'bg-zinc-800 text-amber-400 shadow-sm border border-zinc-700/50'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  남성 예시
+                </button>
+              </div>
               
-              {/* 샘플 Before/After 슬라이더 (정적) */}
+              {/* 샘플 Before/After 슬라이더 */}
               <BeforeAfterSlider
-                beforeImage="/sample-before.jpg"
-                afterImage="/sample-after.jpg"
+                beforeImage={sampleGender === '여성' ? '/sample-before.jpg' : '/sample-male-before.jpg'}
+                afterImage={sampleGender === '여성' ? '/sample-after.jpg' : '/sample-male-after.jpg'}
               />
 
               <div className="mt-4 space-y-2 text-center lg:text-left">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400">시뮬레이션 스타일</span>
-                  <span className="text-amber-400 font-bold">여성 단발 태슬컷 & 슬릭펌 ✨</span>
+                  <span className="text-amber-400 font-bold">
+                    {sampleGender === '여성' 
+                      ? '여성 중단발 빌드펌 & 볼륨 레이어드 ✨' 
+                      : '남성 쉐도우 애즈펌 & 다운펌 ✨'}
+                  </span>
                 </div>
-                <div className="p-2.5 bg-zinc-950/80 rounded-xl border border-zinc-800 text-[11px] text-zinc-500 leading-relaxed">
-                  📢 <strong>안내:</strong> 고객의 얼굴형을 돋보이게 하는 라인 정리와 수분 클리닉을 결합하여 스타일의 완성도를 높인 시뮬레이션 제안서 예시입니다.
+                <div className="p-2.5 bg-zinc-950/80 rounded-xl border border-zinc-800 text-[11px] text-zinc-500 leading-relaxed min-h-[58px] flex items-center">
+                  <span>
+                    📢 <strong>안내:</strong>{' '}
+                    {sampleGender === '여성'
+                      ? '부스스한 중단발 반곱슬 기장에서 우아한 레이어드 C컬/S컬 볼륨과 수분 클리닉을 결합하여 세련된 분위기를 연출한 시뮬레이션 제안서 예시입니다.'
+                      : '뜨고 덥수룩한 생머리 기장에서 트렌디한 쉐도우 애즈펌 볼륨과 깔끔한 라인 다운펌을 결합하여 댄디하고 스마트한 인상을 연출한 시뮬레이션 제안서 예시입니다.'}
+                  </span>
                 </div>
               </div>
             </div>
