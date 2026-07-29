@@ -1211,7 +1211,7 @@ export default function HomePage() {
           <div className="flex-1 space-y-6 text-center lg:text-left">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-tight text-white">
               전문 디자이너의<br />
-              <span className="gold-gradient">1:1 맞춤 헤어 컨설팅</span>
+              <span className="gold-gradient">맞춤 헤어 컨설팅</span>
             </h2>
 
             <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed">
