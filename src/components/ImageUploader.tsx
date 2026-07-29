@@ -98,7 +98,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragOver(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       processFile(e.dataTransfer.files[0]);
     }
@@ -195,13 +195,11 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={isMobile ? undefined : triggerFileInput}
-          className={`relative w-full aspect-[4/5] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center transition-all duration-300 ${
-            isMobile ? '' : 'cursor-pointer hover:border-zinc-700'
-          } ${
-            isDragOver
+          className={`relative w-full aspect-[4/5] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center transition-all duration-300 ${isMobile ? '' : 'cursor-pointer hover:border-zinc-700'
+            } ${isDragOver
               ? 'border-amber-400 bg-amber-400/5 shadow-[0_0_20px_rgba(197,168,128,0.15)]'
               : 'border-zinc-800 bg-zinc-900/30'
-          }`}
+            }`}
         >
           {/* 갤러리 파일 업로드용 인풋 */}
           <input
@@ -248,11 +246,10 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             {isMobile ? '고객 사진 등록하기' : '고객 사진 드래그 앤 드롭 또는 클릭하여 업로드'}
           </p>
           <p className="text-zinc-500 text-xs max-w-[260px] leading-relaxed px-4 mb-5">
-            {isMobile 
-              ? '카메라로 촬영하거나 사진첩에서 불러올 수 있습니다.' 
+            {isMobile
+              ? '카메라로 촬영하거나 사진첩에서 불러올 수 있습니다.'
               : 'JPG, PNG, WebP 지원 (최대 15MB)'}
             <br />
-            업로드 시 AI 연산을 위해 이미지 크기가 자동으로 최적화됩니다.
           </p>
 
           {isMobile ? (

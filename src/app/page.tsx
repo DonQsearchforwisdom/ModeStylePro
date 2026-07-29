@@ -342,7 +342,7 @@ const nativeBridge = {
     try {
       if (typeof window !== 'undefined') {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        
+
         // iOS Keychain 연동 시뮬레이션 및 실제 네이티브 브릿지 호출
         if (isIOS && (window as any).webkit?.messageHandlers?.keychainHandler) {
           const res = await (window as any).webkit.messageHandlers.keychainHandler.postMessage({
@@ -687,14 +687,14 @@ export default function HomePage() {
   const handleImageSelected = async (base64: string) => {
     // 렌더링 스케줄 지연 없이 즉각 동기식 세션 백업 실행 (카카오 OOM 리로드에 대비)
     safeSessionStorage.setItem('modestyle_original_image', base64);
-    
+
     // 기존 세션 정보 비우기
     try {
       if (typeof window !== 'undefined' && window.sessionStorage) {
         sessionStorage.removeItem('modestyle_results_list');
         sessionStorage.removeItem('modestyle_diagnosis_result');
       }
-    } catch (e) {}
+    } catch (e) { }
 
     setOriginalImage(base64);
     setErrorMsg(null);
@@ -758,7 +758,7 @@ export default function HomePage() {
         sessionStorage.removeItem('modestyle_results_list');
         sessionStorage.removeItem('modestyle_diagnosis_result');
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   // 설정 저장
@@ -1190,7 +1190,7 @@ export default function HomePage() {
           if (typeof window !== 'undefined' && window.sessionStorage) {
             sessionStorage.removeItem('modestyle_results_list');
           }
-        } catch (e) {}
+        } catch (e) { }
       }
       return next;
     });
@@ -1651,7 +1651,7 @@ export default function HomePage() {
 
               <div className="mt-4 space-y-2 text-center lg:text-left">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-400">시뮬레이션 스타일</span>
+                  <span className="text-zinc-400">스타일 제안</span>
                   <span className="text-amber-400 font-bold">
                     {sampleGender === '여성'
                       ? '여성 중단발 빌드펌 & 볼륨 레이어드 ✨'
@@ -1662,8 +1662,8 @@ export default function HomePage() {
                   <span>
                     📢 <strong>안내:</strong>{' '}
                     {sampleGender === '여성'
-                      ? '부스스한 중단발 반곱슬 기장에서 우아한 레이어드 C컬/S컬 볼륨과 수분 클리닉을 결합하여 세련된 분위기를 연출한 시뮬레이션 제안서 예시입니다.'
-                      : '뜨고 덥수룩한 생머리 기장에서 트렌디한 쉐도우 애즈펌 볼륨과 깔끔한 라인 다운펌을 결합하여 댄디하고 스마트한 인상을 연출한 시뮬레이션 제안서 예시입니다.'}
+                      ? '부스스한 중단발 반곱슬 기장에서 우아한 레이어드 C컬/S컬 볼륨과 수분 클리닉을 결합하여 세련된 분위기를 연출했습니다.'
+                      : '뜨고 덥수룩한 생머리 기장에서 트렌디한 쉐도우 애즈펌 볼륨과 깔끔한 라인 다운펌을 결합하여 댄디하고 스마트한 인상을 연출했습니다.'}
                   </span>
                 </div>
               </div>
@@ -1679,7 +1679,7 @@ export default function HomePage() {
           <div className="max-w-xl mx-auto text-center space-y-2">
             <h3 className="text-2xl md:text-3xl font-extrabold text-white">헤어 스타일링 랩 (Styling Lab)</h3>
             <p className="text-zinc-500 text-xs md:text-sm">
-              고객님의 성별과 사진을 등록하여 시뮬레이션을 준비해 주세요.
+              고객님의 성별과 사진을 등록해주세요.
             </p>
           </div>
 
@@ -1903,11 +1903,10 @@ export default function HomePage() {
                       type="button"
                       onClick={handleCustomStyleToggle}
                       disabled={!customStyleText.trim()}
-                      className={`px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
-                        isCustomStyleApplied && customStyleText.trim()
-                          ? 'bg-amber-400 border-amber-400 text-zinc-950 font-extrabold'
-                          : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed'
-                      }`}
+                      className={`px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm ${isCustomStyleApplied && customStyleText.trim()
+                        ? 'bg-amber-400 border-amber-400 text-zinc-950 font-extrabold'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed'
+                        }`}
                     >
                       {isCustomStyleApplied && customStyleText.trim() ? (
                         <>
@@ -2066,7 +2065,7 @@ export default function HomePage() {
                             <span className="text-zinc-100">{result.designOption}</span>
                             <span className="text-amber-300 font-extrabold font-mono shrink-0">{result.designCost}</span>
                           </div>
-                          
+
                           {result.upsell && (
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-amber-400/5 border border-amber-400/10 rounded-lg gap-1">
                               <span className="text-amber-400 font-bold">✨ {result.upsell.split(' : ')[0]}</span>
