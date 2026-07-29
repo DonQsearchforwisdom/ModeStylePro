@@ -1247,7 +1247,7 @@ export default function HomePage() {
                     : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                 >
-                  여성 예시 👩
+                  여성 예시 🎀
                 </button>
                 <button
                   type="button"
@@ -1257,7 +1257,7 @@ export default function HomePage() {
                     : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                 >
-                  남성 예시 👨
+                  남성 예시 👔
                 </button>
               </div>
 
