@@ -694,7 +694,7 @@ export default function HomePage() {
       ctx.fillRect(0, img.height - barHeight, img.width, barHeight);
       
       // 3. 워터마크 텍스트 합성: ModeStylePro _ [살롱 상호명]
-      const watermarkText = `ModeStylePro _ ${salonName || '살롱오하이'}`;
+      const watermarkText = salonName ? `ModeStylePro _ ${salonName}` : 'ModeStylePro';
       const fontSize = Math.round(img.height * 0.022); // 높이 대비 약 2.2% 폰트 크기
       ctx.font = `bold ${fontSize}px 'Pretendard', sans-serif`;
       ctx.fillStyle = '#ffffff';
@@ -716,7 +716,8 @@ export default function HomePage() {
       // 4. 가공된 캔버스 데이터를 다운로드로 유도
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
-      link.download = `modestyle-${salonName}-${styleName.replace(/\s+/g, '-')}.png`;
+      const filePrefix = salonName ? `modestyle-${salonName}` : 'modestyle';
+      link.download = `${filePrefix}-${styleName.replace(/\s+/g, '-')}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1046,9 +1047,6 @@ export default function HomePage() {
                     <span className="text-zinc-200 text-xs font-bold flex items-center gap-1.5">
                       <Activity className="w-4 h-4 text-amber-400" />
                       AI 실시간 헤어 진단 리포트
-                    </span>
-                    <span className="text-[10px] text-amber-400 bg-amber-400/5 px-2 py-0.5 rounded border border-amber-400/10 font-bold">
-                      Gemini Diagnosis
                     </span>
                   </div>
 
