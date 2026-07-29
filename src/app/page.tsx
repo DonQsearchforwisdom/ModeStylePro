@@ -426,45 +426,7 @@ export default function HomePage() {
     safeSessionStorage.setItem('modestyle_gender', gender);
   }, [gender]);
 
-  // 1. originalImage 변경 시 sessionStorage 백업
-  useEffect(() => {
-    if (originalImage) {
-      safeSessionStorage.setItem('modestyle_original_image', originalImage);
-    } else {
-      try {
-        if (typeof window !== 'undefined' && window.sessionStorage) {
-          sessionStorage.removeItem('modestyle_original_image');
-        }
-      } catch (e) {}
-    }
-  }, [originalImage]);
 
-  // 2. diagnosisResult 변경 시 sessionStorage 백업
-  useEffect(() => {
-    if (diagnosisResult) {
-      safeSessionStorage.setItem('modestyle_diagnosis_result', JSON.stringify(diagnosisResult));
-    } else {
-      try {
-        if (typeof window !== 'undefined' && window.sessionStorage) {
-          sessionStorage.removeItem('modestyle_diagnosis_result');
-        }
-      } catch (e) {}
-    }
-  }, [diagnosisResult]);
-
-  // 3. resultsList 변경 시 sessionStorage 백업 (File 객체 제외하고 JSON 직렬화)
-  useEffect(() => {
-    if (resultsList.length > 0) {
-      const serializedList = resultsList.map(({ watermarkedFile, ...rest }) => rest);
-      safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
-    } else {
-      try {
-        if (typeof window !== 'undefined' && window.sessionStorage) {
-          sessionStorage.removeItem('modestyle_results_list');
-        }
-      } catch (e) {}
-    }
-  }, [resultsList]);
 
   // 로컬스토리지 정보 마운트 시 로드 및 일일 무료 5회 리셋 처리
   useEffect(() => {
@@ -593,6 +555,17 @@ export default function HomePage() {
 
   // 이미지 선택 시 자동 진단 API 구동
   const handleImageSelected = async (base64: string) => {
+    // 렌더링 스케줄 지연 없이 즉각 동기식 세션 백업 실행 (카카오 OOM 리로드에 대비)
+    safeSessionStorage.setItem('modestyle_original_image', base64);
+    
+    // 기존 세션 정보 비우기
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.removeItem('modestyle_results_list');
+        sessionStorage.removeItem('modestyle_diagnosis_result');
+      }
+    } catch (e) {}
+
     setOriginalImage(base64);
     setErrorMsg(null);
     setResultsList([]);
@@ -621,6 +594,9 @@ export default function HomePage() {
       }
 
       setDiagnosisResult(data);
+      // 진단 결과 동기 백업
+      safeSessionStorage.setItem('modestyle_diagnosis_result', JSON.stringify(data));
+
       if (data.currentLength) {
         setSelectedLength(data.currentLength);
       }
@@ -644,6 +620,15 @@ export default function HomePage() {
     setSelectedRecommendations([]); // AI 추천 선택 초기화
     setDiagnosisResult(null);
     setDiagnosisError(null);
+
+    // 세션 스토리지 백업 데이터 제거
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        sessionStorage.removeItem('modestyle_original_image');
+        sessionStorage.removeItem('modestyle_results_list');
+        sessionStorage.removeItem('modestyle_diagnosis_result');
+      }
+    } catch (e) {}
   };
 
   // 설정 저장
@@ -826,12 +811,22 @@ export default function HomePage() {
         createWatermarkedFile(data.image, job.styleName, salonName)
           .then((file) => {
             newResult.watermarkedFile = file;
-            setResultsList((prev) => [newResult, ...prev]);
+            setResultsList((prev) => {
+              const next = [newResult, ...prev];
+              const serializedList = next.map(({ watermarkedFile, ...rest }) => rest);
+              safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
+              return next;
+            });
           })
           .catch((err) => {
             console.error('워터마크 이미지 사전 생성 실패:', err);
             // 실패해도 결과 카드는 정상 노출되도록 추가
-            setResultsList((prev) => [newResult, ...prev]);
+            setResultsList((prev) => {
+              const next = [newResult, ...prev];
+              const serializedList = next.map(({ watermarkedFile, ...rest }) => rest);
+              safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
+              return next;
+            });
           });
 
         // 사용 횟수 차감: 무료 횟수가 먼저 차감되고 바닥나면 유료 횟수 차감
@@ -963,7 +958,21 @@ export default function HomePage() {
 
   // 개별 결과 삭제
   const handleDeleteResultItem = (id: string) => {
-    setResultsList((prev) => prev.filter((item) => item.id !== id));
+    setResultsList((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      // 동기식 세션 백업
+      if (next.length > 0) {
+        const serializedList = next.map(({ watermarkedFile, ...rest }) => rest);
+        safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
+      } else {
+        try {
+          if (typeof window !== 'undefined' && window.sessionStorage) {
+            sessionStorage.removeItem('modestyle_results_list');
+          }
+        } catch (e) {}
+      }
+      return next;
+    });
   };
 
   return (
