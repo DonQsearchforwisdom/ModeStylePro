@@ -13,6 +13,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -113,6 +114,10 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
     fileInputRef.current?.click();
   };
 
+  const triggerCameraInput = () => {
+    cameraInputRef.current?.click();
+  };
+
   return (
     <div className="w-full">
       {previewImage ? (
@@ -123,27 +128,64 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-            <button
-              onClick={triggerFileInput}
-              type="button"
-              className="bg-white text-zinc-950 px-4 py-2 rounded-full font-semibold text-sm hover:bg-zinc-200 transition-colors shadow-md"
-            >
-              사진 변경
-            </button>
-            <button
-              onClick={onClear}
-              type="button"
-              className="bg-red-600 text-white px-4 py-2 rounded-full font-semibold text-sm hover:bg-red-700 transition-colors shadow-md"
-            >
-              삭제
-            </button>
+            {isMobile ? (
+              <div className="flex flex-col gap-2 w-full max-w-[140px]">
+                <button
+                  onClick={triggerCameraInput}
+                  type="button"
+                  className="bg-amber-400 text-zinc-950 py-2.5 rounded-full font-bold text-xs hover:bg-amber-500 transition-colors shadow-md text-center"
+                >
+                  사진 촬영
+                </button>
+                <button
+                  onClick={triggerFileInput}
+                  type="button"
+                  className="bg-white text-zinc-950 py-2.5 rounded-full font-bold text-xs hover:bg-zinc-200 transition-colors shadow-md text-center"
+                >
+                  앨범 선택
+                </button>
+                <button
+                  onClick={onClear}
+                  type="button"
+                  className="bg-red-600 text-white py-2.5 rounded-full font-bold text-xs hover:bg-red-700 transition-colors shadow-md text-center"
+                >
+                  삭제
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={triggerFileInput}
+                  type="button"
+                  className="bg-white text-zinc-950 px-4 py-2 rounded-full font-semibold text-sm hover:bg-zinc-200 transition-colors shadow-md"
+                >
+                  사진 변경
+                </button>
+                <button
+                  onClick={onClear}
+                  type="button"
+                  className="bg-red-600 text-white px-4 py-2 rounded-full font-semibold text-sm hover:bg-red-700 transition-colors shadow-md"
+                >
+                  삭제
+                </button>
+              </>
+            )}
           </div>
-          {/* 숨겨진 파일 인풋 */}
+          {/* 숨겨진 일반 파일 인풋 */}
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
             accept="image/*"
+            className="hidden"
+          />
+          {/* 숨겨진 카메라 촬영 인풋 */}
+          <input
+            type="file"
+            ref={cameraInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            capture="user"
             className="hidden"
           />
         </div>
@@ -152,13 +194,16 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={triggerFileInput}
-          className={`relative w-full aspect-[4/5] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 ${
+          onClick={isMobile ? undefined : triggerFileInput}
+          className={`relative w-full aspect-[4/5] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-6 text-center transition-all duration-300 ${
+            isMobile ? '' : 'cursor-pointer hover:border-zinc-700'
+          } ${
             isDragOver
               ? 'border-amber-400 bg-amber-400/5 shadow-[0_0_20px_rgba(197,168,128,0.15)]'
-              : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/30'
+              : 'border-zinc-800 bg-zinc-900/30'
           }`}
         >
+          {/* 갤러리 파일 업로드용 인풋 */}
           <input
             type="file"
             ref={fileInputRef}
@@ -167,7 +212,17 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             className="hidden"
           />
 
-          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-4 text-zinc-400 transition-colors duration-300 hover:text-amber-400">
+          {/* 모바일 카메라 촬영용 인풋 */}
+          <input
+            type="file"
+            ref={cameraInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            capture="user"
+            className="hidden"
+          />
+
+          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-4 text-zinc-400">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -190,15 +245,34 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
           </div>
 
           <p className="text-zinc-200 font-medium mb-1.5 text-sm md:text-base px-2">
-            {isMobile ? '고객 사진 촬영 또는 등록하기' : '고객 사진 드래그 앤 드롭 또는 클릭하여 업로드'}
+            {isMobile ? '고객 사진 등록하기' : '고객 사진 드래그 앤 드롭 또는 클릭하여 업로드'}
           </p>
-          <p className="text-zinc-500 text-xs max-w-[260px] leading-relaxed px-4">
+          <p className="text-zinc-500 text-xs max-w-[260px] leading-relaxed px-4 mb-5">
             {isMobile 
-              ? '카메라로 바로 촬영하거나 앨범에서 선택할 수 있습니다.' 
-              : 'JPG, PNG, WebP 지원 (최대 10MB)'}
+              ? '카메라로 촬영하거나 사진첩에서 불러올 수 있습니다.' 
+              : 'JPG, PNG, WebP 지원 (최대 15MB)'}
             <br />
-            업로드 시 AI 처리를 위해 자동으로 최적화(1024px)됩니다.
+            업로드 시 AI 연산을 위해 이미지 크기가 자동으로 최적화됩니다.
           </p>
+
+          {isMobile ? (
+            <div className="flex flex-col gap-2 w-full max-w-[240px]">
+              <button
+                type="button"
+                onClick={triggerCameraInput}
+                className="w-full py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-500 text-zinc-950 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-400/10 active:scale-[0.98] transition-transform"
+              >
+                📸 즉시 사진 촬영하기
+              </button>
+              <button
+                type="button"
+                onClick={triggerFileInput}
+                className="w-full py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
+              >
+                🖼️ 갤러리에서 선택
+              </button>
+            </div>
+          ) : null}
 
           {error && (
             <div className="mt-4 px-3 py-1.5 bg-red-950/50 border border-red-800 text-red-400 text-xs rounded-lg max-w-[280px]">

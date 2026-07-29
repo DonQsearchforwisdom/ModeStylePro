@@ -250,7 +250,7 @@ const createWatermarkedFile = (imageSrc: string, styleName: string, salonName: s
     const img = new Image();
     // base64 data URL이 아닌 외부 웹 이미지인 경우에만 CORS 헤더 요청 적용
     if (imageSrc && imageSrc.startsWith('http')) {
-      img.crossOrigin = 'anonymous'; 
+      img.crossOrigin = 'anonymous';
     }
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -1574,7 +1574,7 @@ export default function HomePage() {
                           className="flex-1 w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-extrabold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md text-xs md:text-sm"
                         >
                           <Share2 className="w-4 h-4" />
-                          이미지 제안서 공유하기
+                          제안 이미지 공유하기
                         </button>
                       </div>
                     </div>
