@@ -131,7 +131,7 @@ const STYLE_OPTIONS: Record<'여성' | '남성', StyleItem[]> = {
     {
       name: '소프트 크롭컷',
       emoji: '✨',
-      image: '/m_platinum_ash.png', // 크롭컷 전용 디자인 이미지 매칭
+      image: '/m_iron_pomade.png', // 크롭컷 전용 디자인 이미지 매칭
       upsell: '추가 제안 : 전체 다운펌 + 두피 스케일링 (40,000원 ~ 60,000원)',
       careOption: '🧪 모발 손상 방지 아미노 수분 케어',
       careCost: '추가 비용 : 30,000원 ~ 40,000원',
@@ -1387,35 +1387,11 @@ export default function HomePage() {
             {/* 우측 입력 칼럼: 모발 길이 및 다중 스타일 선택 */}
             <div className="lg:col-span-7 space-y-6">
 
-              {/* Step 3: Hair Length Chips */}
-              <div className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-3">
-                <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">2</span>
-                  목표 모발 길이 & 타입
-                </span>
-
-                <div className="flex flex-wrap gap-2">
-                  {LENGTH_OPTIONS[gender].map((len) => (
-                    <button
-                      key={len}
-                      type="button"
-                      onClick={() => setSelectedLength(len)}
-                      className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${selectedLength === len
-                        ? 'bg-amber-400/10 border-amber-400 text-amber-400 shadow-sm'
-                        : 'bg-zinc-900/50 border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                        }`}
-                    >
-                      {len}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Step 4: 스타일 그리드 (다중 선택 가능) */}
+              {/* Step 3: 스타일 그리드 (다중 선택 가능) */}
               <div ref={stylesSectionRef} className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-3 scroll-mt-24">
                 <div className="flex items-center justify-between">
                   <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">3</span>
+                    <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">2</span>
                     {gender} 시뮬레이션 타겟 헤어 스타일 (다중 선택 가능)
                   </span>
                   <span className="text-[10px] text-amber-400/80 font-medium">
