@@ -1227,11 +1227,6 @@ export default function HomePage() {
                 헤어 시뮬레이션 시작하기
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
-
-              <div className="text-xs text-zinc-500 bg-zinc-900 px-4 py-2 rounded-full border border-zinc-800/60 font-medium flex items-center gap-1.5">
-                <span>서비스 모드:</span>
-                <span className="text-amber-400 font-extrabold">개발용 무제한 ♾️</span>
-              </div>
             </div>
           </div>
 
