@@ -1610,7 +1610,7 @@ export default function HomePage() {
 
             <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed">
               디자이너의 디자인 감각에 정밀 분석 데이터를 더해<br />
-              실패 없는 스타일을 제안해 드립니다.
+              완성도 높은 스타일을 제안해 드립니다.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
