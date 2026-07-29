@@ -1210,12 +1210,13 @@ export default function HomePage() {
         <section className="flex flex-col lg:flex-row items-center gap-12 lg:gap-8">
           <div className="flex-1 space-y-6 text-center lg:text-left">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-tight text-white">
-              헤어·얼굴형 분석부터<br />
-              <span className="gold-gradient">프리미엄 스타일 제안까지</span>
+              전문 디자이너의<br />
+              <span className="gold-gradient">1:1 맞춤 헤어 컨설팅</span>
             </h2>
 
             <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              디자이너의 감각을 완성하는 프리미엄 파트너
+              디자이너의 디자인 감각에 정밀 분석 데이터를 더해<br />
+              실패 없는 스타일을 제안해 드립니다.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
