@@ -877,6 +877,13 @@ export default function HomePage() {
       document.body.removeChild(link);
     };
 
+    // 인앱 브라우저 여부 판별 (카카오톡, 네이버, 인스타그램 등)
+    const isInsideApp = () => {
+      if (typeof window === 'undefined') return false;
+      const ua = window.navigator.userAgent.toLowerCase();
+      return ua.indexOf('kakaotalk') > -1 || ua.indexOf('naver') > -1 || ua.indexOf('instagram') > -1 || ua.indexOf('fb') > -1;
+    };
+
     // 1. 이미 준비된 워터마크 파일이 있는 경우 (동기 실행으로 모바일 사용자 제스처 컨텍스트 유지)
     if (result.watermarkedFile && navigator.share && navigator.canShare) {
       if (navigator.canShare({ files: [result.watermarkedFile] })) {
@@ -894,6 +901,11 @@ export default function HomePage() {
           console.error('사전 생성 파일 공유 실패, 다운로드로 대체:', error);
         }
       }
+    }
+
+    // 파일 공유가 불가능하여 다운로드로 폴백될 때, 카카오톡 등의 인앱 브라우저인 경우 안내 추가
+    if (isInsideApp()) {
+      alert("💡 카카오톡 앱 내부에서는 보안 정책상 이미지 직접 공유(카카오톡 전송 등)가 제한되어 있어 제안서 이미지가 갤러리에 다운로드(저장)됩니다.\n\n오른쪽 상단 메뉴(또는 삼점/더보기) 버튼을 눌러 '다른 브라우저(Safari/Chrome)로 열기'를 선택하시면 곧장 카카오톡 및 메시지 전송 공유 기능을 사용하실 수 있습니다!");
     }
 
     // 2. 파일이 준비되지 않았거나 Web Share API가 지원되지 않는 경우 동적 생성 및 다운로드(저장)
