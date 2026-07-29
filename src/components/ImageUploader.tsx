@@ -185,7 +185,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             ref={cameraInputRef}
             onChange={handleFileChange}
             accept="image/*"
-            capture="user"
+            capture={true}
             className="hidden"
           />
         </div>
@@ -218,7 +218,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             ref={cameraInputRef}
             onChange={handleFileChange}
             accept="image/*"
-            capture="user"
+            capture={true}
             className="hidden"
           />
 
