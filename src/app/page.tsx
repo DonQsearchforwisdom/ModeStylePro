@@ -369,6 +369,7 @@ declare global {
 }
 
 export default function HomePage() {
+  const [isKakaoTalk, setIsKakaoTalk] = useState<boolean>(false);
   const [gender, setGender] = useState<'여성' | '남성'>('여성');
   const [selectedLength, setSelectedLength] = useState<string>('');
 
@@ -430,6 +431,13 @@ export default function HomePage() {
 
   // 로컬스토리지 정보 마운트 시 로드 및 일일 무료 5회 리셋 처리
   useEffect(() => {
+    // 0-0. 카카오톡 인앱 브라우저 여부 판별
+    if (typeof window !== 'undefined') {
+      const ua = window.navigator.userAgent.toLowerCase();
+      const isKakao = /kakaotalk/i.test(ua);
+      setIsKakaoTalk(isKakao);
+    }
+
     // 0-1. 성별 정보 복구
     const savedGender = safeSessionStorage.getItem('modestyle_gender');
     if (savedGender === '여성' || savedGender === '남성') {
@@ -1023,6 +1031,13 @@ export default function HomePage() {
         </div>
       </header>
 
+      {/* 카카오톡 전용 새로고침 방어 상단 가이드 배너 */}
+      {isKakaoTalk && (
+        <div className="bg-amber-400 text-zinc-950 font-extrabold text-[11px] md:text-xs py-2.5 px-4 text-center flex items-center justify-center gap-1.5 shadow-md">
+          <span>⚠️ 카카오톡 안에서는 카메라 촬영 시 화면 초기화 오류가 발생하므로, 우측 상단 더보기(점 3개) 버튼을 누른 후 '다른 브라우저로 열기'를 선택하여 접속해 주세요!</span>
+        </div>
+      )}
+
       {/* 톱니바퀴 설정 모달 팝업 */}
       {showSettings && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1323,6 +1338,7 @@ export default function HomePage() {
                   onImageSelected={handleImageSelected}
                   onClear={handleClearImage}
                   previewImage={originalImage}
+                  isKakaoTalk={isKakaoTalk}
                 />
               </div>
 
