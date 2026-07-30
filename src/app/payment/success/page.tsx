@@ -24,8 +24,14 @@ function PaymentSuccessContent() {
     if (credits > 0) {
       // 로컬스토리지 및 보안 스토리지 저장
       if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('credits_remaining', credits.toString());
-        localStorage.setItem('total_plan_credits', total.toString());
+        // 기존 크레딧 읽어서 신규 충전분 합산(누적)
+        const prevRemaining = parseInt(localStorage.getItem('credits_remaining') || '5', 10);
+        const prevTotal = parseInt(localStorage.getItem('total_plan_credits') || '5', 10);
+        const newRemaining = prevRemaining + credits;
+        const newTotal = prevTotal + total;
+
+        localStorage.setItem('credits_remaining', newRemaining.toString());
+        localStorage.setItem('total_plan_credits', newTotal.toString());
         localStorage.setItem('user_plan', plan);
         localStorage.setItem('free_credits_initialized', 'true');
         localStorage.setItem('last_purchased_plan', plan);
@@ -35,11 +41,11 @@ function PaymentSuccessContent() {
           if ((window as any).webkit?.messageHandlers?.keychainHandler) {
             (window as any).webkit.messageHandlers.keychainHandler.postMessage({
               action: 'saveCredits',
-              data: { remaining: credits, total, plan }
+              data: { remaining: newRemaining, total: newTotal, plan }
             });
           }
           if ((window as any).AndroidSecureStorage) {
-            (window as any).AndroidSecureStorage.saveCredits(credits, total, plan);
+            (window as any).AndroidSecureStorage.saveCredits(newRemaining, newTotal, plan);
           }
         } catch (e) {
           console.warn('Native secure storage sync failed on success page:', e);

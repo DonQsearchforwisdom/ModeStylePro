@@ -882,20 +882,20 @@ export default function HomePage() {
   // 토스페이먼츠 결제창 요청 헬퍼
   const requestTossPayment = (planType: '1회충전' | '라이트' | '살롱') => {
     if (typeof window === 'undefined') return;
-    
+
     const clientKey = 'test_ck_D5aZMgN5K3Q1vvJQ8Jqv85bGbR51'; // 토스페이먼츠 공식 테스트 클라이언트 키
     const tossPayments = (window as any).TossPayments ? (window as any).TossPayments(clientKey) : null;
-    
+
     if (!tossPayments) {
       alert('Toss Payments 결제 모듈을 로드하지 못했습니다. 잠시 후 다시 시도해 주세요.');
       setIsLoading(false);
       return;
     }
-    
+
     let price = 5000;
     let credits = 30;
     let total = 30;
-    
+
     if (planType === '라이트') {
       price = 29000;
       credits = 300;
@@ -905,10 +905,10 @@ export default function HomePage() {
       credits = 1000;
       total = 1000;
     }
-    
+
     const successUrl = `${window.location.origin}/payment/success?plan=${encodeURIComponent(planType)}&credits=${credits}&total=${total}`;
     const failUrl = `${window.location.origin}/payment/fail`;
-    
+
     try {
       tossPayments.requestPayment('카드', {
         amount: price,
@@ -956,16 +956,16 @@ export default function HomePage() {
   const handleCancelSubscription = async () => {
     const isSubscribed = userPlan === '라이트' || userPlan === '살롱';
     const planText = isSubscribed ? '구독 정기 결제' : '플랜 이용';
-    
+
     if (userPlan === '무료체험') {
       alert('현재 가입된 유료 플랜 또는 구독 요금제가 없습니다.');
       return;
     }
 
     const confirmCancel = confirm(
-      `정말로 [${userPlan}] ${planText}를 취소/해지하시겠습니까?\n해지 시 즉시 무료 체험 모드로 전환되며 잔여 크레딧이 5회로 리셋됩니다.`
+      `정말로 [${userPlan}] ${planText}를 취소/해지하시겠습니까?\n해지 시 다음 주기에 자동 갱신(결제)이 중지되며, 현재 보유하신 잔여 횟수(${remainingCredits.toLocaleString()}회)는 계속 유지됩니다.`
     );
-    
+
     if (!confirmCancel) return;
 
     setIsLoading(true);
@@ -985,13 +985,11 @@ export default function HomePage() {
         alert('💡 모바일 앱의 정기 구독 해지는 App Store / Play Store의 [설정 > 구독 관리] 메뉴를 통해서도 안전하게 취소하실 수 있습니다.');
       }
 
-      // 2. 공통 스토리지 초기화 및 무료체험 복귀
-      setRemainingCredits(5);
-      setTotalPlanCredits(5);
+      // 2. 공통 스토리지 업데이트 및 무료체험 복귀 (기존 잔여 크레딧은 보존)
       setUserPlan('무료체험');
-      nativeBridge.saveCreditsData(5, 5, '무료체험');
-      
-      alert('🔒 구독 요금제가 정상적으로 해지되었으며, 기본 [무료 체험] 플랜으로 안전하게 복귀되었습니다.');
+      nativeBridge.saveCreditsData(remainingCredits, 5, '무료체험');
+
+      alert('🔒 구독 요금제가 정상적으로 해지되었으며, 기본 [무료 체험] 플랜으로 안전하게 전환되었습니다. 남은 크레딧은 계속 사용하실 수 있습니다.');
       setShowBillingModal(false);
     } catch (e) {
       console.error(e);
@@ -1413,7 +1411,7 @@ export default function HomePage() {
                   defaultValue={salonName}
                   id="setting-salon-input"
                   className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs focus:border-amber-400 focus:outline-none text-zinc-100"
-                  placeholder="예: 살롱오하이"
+                  placeholder="예: 드림헤어"
                 />
               </div>
               <div className="space-y-1.5">
@@ -1423,7 +1421,7 @@ export default function HomePage() {
                   defaultValue={designerName}
                   id="setting-designer-input"
                   className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs focus:border-amber-400 focus:outline-none text-zinc-100"
-                  placeholder="예: 지오 디자이너"
+                  placeholder="예: 지오"
                 />
               </div>
             </div>
@@ -1486,13 +1484,13 @@ export default function HomePage() {
                   </span>
                 </span>
               </div>
-              {userPlan !== '무료체험' && (
+              {(userPlan === '라이트' || userPlan === '살롱') && (
                 <button
                   onClick={handleCancelSubscription}
                   type="button"
                   className="px-3.5 py-1.5 rounded-lg border border-red-950 bg-red-950/20 hover:bg-red-900/40 text-red-400 font-bold text-[10px] active:scale-[0.98] transition-all"
                 >
-                  {userPlan === '라이트' || userPlan === '살롱' ? '구독 취소' : '이용 해지'}
+                  구독 취소
                 </button>
               )}
             </div>
@@ -1762,8 +1760,7 @@ export default function HomePage() {
             </h2>
 
             <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed">
-              디자이너의 디자인 감각에 정밀 분석 데이터를 더해<br />
-              완성도 높은 스타일을 제안해 드립니다.
+              사진 한 장만으로, 고객이 원하던 특별한 변신을 제안해보세요.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
@@ -2004,7 +2001,7 @@ export default function HomePage() {
 
               {/* Step 3: 스타일 그리드 (다중 선택 가능) */}
               <div ref={stylesSectionRef} className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-5 scroll-mt-24">
-                
+
                 {/* 1. 머리 기장 선택 섹션 */}
                 <div className="space-y-2.5">
                   <div className="flex items-center gap-1.5">
@@ -2019,11 +2016,10 @@ export default function HomePage() {
                           key={length}
                           type="button"
                           onClick={() => setSelectedLength(length)}
-                          className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all ${
-                            isSelected
+                          className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all ${isSelected
                               ? 'bg-amber-400 border-amber-400 text-zinc-950 shadow-md font-extrabold scale-[1.02]'
                               : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-700 text-zinc-400'
-                          }`}
+                            }`}
                         >
                           {length}
                         </button>
@@ -2089,19 +2085,17 @@ export default function HomePage() {
                       type="button"
                       onClick={handleCustomStyleToggle}
                       disabled={!customStyleText.trim()}
-                      className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                        isCustomStyleApplied && customStyleText.trim()
+                      className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isCustomStyleApplied && customStyleText.trim()
                           ? 'border-amber-400 bg-amber-400 text-zinc-950'
                           : 'border-zinc-700 bg-zinc-900/40'
-                      }`}
+                        }`}
                     >
                       {isCustomStyleApplied && customStyleText.trim() && <Check className="w-3 h-3 stroke-[3]" />}
                     </button>
-                    <span 
+                    <span
                       onClick={customStyleText.trim() ? handleCustomStyleToggle : undefined}
-                      className={`text-[11px] font-bold select-none ${
-                        customStyleText.trim() ? 'text-zinc-300 cursor-pointer hover:text-amber-400' : 'text-zinc-500'
-                      }`}
+                      className={`text-[11px] font-bold select-none ${customStyleText.trim() ? 'text-zinc-300 cursor-pointer hover:text-amber-400' : 'text-zinc-500'
+                        }`}
                     >
                       ✨ 원하는 스타일 직접 입력
                     </span>
