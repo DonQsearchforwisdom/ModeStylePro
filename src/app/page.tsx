@@ -2472,11 +2472,30 @@ export default function HomePage() {
             </div>
 
             <p className="text-xs text-zinc-400 text-center leading-relaxed">
-              3초 간편 소셜 로그인을 통해<br />
-              결제 내역 및 이전 시뮬레이션 데이터를 안전하게 보존하세요!
+              간편 소셜 로그인 및 개발자 테스트 로그인을 통해<br />
+              결제 정보와 횟수를 안전하게 서버 DB에 연동하세요!
             </p>
 
             <div className="space-y-3">
+              {/* 개발자용 간편 로그인 (로컬 테스트용) */}
+              <button
+                onClick={() => {
+                  signIn('credentials', { username: '테스트 디자이너', callbackUrl: '/' });
+                  setShowLoginModal(false);
+                }}
+                type="button"
+                className="w-full py-3.5 px-4 rounded-xl border border-amber-400/30 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-extrabold text-xs flex items-center justify-center gap-2.5 shadow-lg shadow-amber-400/5 transition-all active:scale-[0.99] cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                🧪 개발자용 1초 간편 로그인 (테스트용)
+              </button>
+
+              <div className="flex items-center my-2 text-zinc-700">
+                <hr className="w-full border-zinc-800" />
+                <span className="px-2 text-[10px] whitespace-nowrap">소셜 간편 로그인</span>
+                <hr className="w-full border-zinc-800" />
+              </div>
+
               {/* 구글 로그인 */}
               <button
                 onClick={() => signIn('google')}
