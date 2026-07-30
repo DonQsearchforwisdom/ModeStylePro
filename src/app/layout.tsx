@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Script from "next/script";
 
 export const metadata: Metadata = {
   title: "ModeStyle Pro | 헤어 시뮬레이터 & 업셀링",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans">{children}</body>
+      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans">
+        {children}
+        <Script src="https://js.tosspayments.com/v1/payment" strategy="lazyOnload" />
+      </body>
     </html>
   );
 }

@@ -868,9 +868,71 @@ export default function HomePage() {
     return `${yyyy}년 ${mm}월 ${dd}일`;
   };
 
+  // 하이브리드 앱 브릿지 감지 헬퍼
+  const isHybridApp = () => {
+    if (typeof window === 'undefined') return false;
+    return !!(
+      (window as any).webkit?.messageHandlers?.keychainHandler ||
+      (window as any).webkit?.messageHandlers?.revenueCatHandler ||
+      (window as any).AndroidSecureStorage ||
+      (window as any).AndroidRevenueCat
+    );
+  };
+
+  // 토스페이먼츠 결제창 요청 헬퍼
+  const requestTossPayment = (planType: '1회충전' | '라이트' | '살롱') => {
+    if (typeof window === 'undefined') return;
+    
+    const clientKey = 'test_ck_D5aZMgN5K3Q1vvJQ8Jqv85bGbR51'; // 토스페이먼츠 공식 테스트 클라이언트 키
+    const tossPayments = (window as any).TossPayments ? (window as any).TossPayments(clientKey) : null;
+    
+    if (!tossPayments) {
+      alert('Toss Payments 결제 모듈을 로드하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      setIsLoading(false);
+      return;
+    }
+    
+    let price = 5000;
+    let credits = 30;
+    let total = 30;
+    
+    if (planType === '라이트') {
+      price = 29000;
+      credits = 300;
+      total = 300;
+    } else if (planType === '살롱') {
+      price = 69000;
+      credits = 1000;
+      total = 1000;
+    }
+    
+    const successUrl = `${window.location.origin}/payment/success?plan=${encodeURIComponent(planType)}&credits=${credits}&total=${total}`;
+    const failUrl = `${window.location.origin}/payment/fail`;
+    
+    try {
+      tossPayments.requestPayment('카드', {
+        amount: price,
+        orderId: `order-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`,
+        orderName: `ModeStyle Pro [${planType}] 요금제 충전`,
+        customerName: 'ModeStyle 고객',
+        successUrl,
+        failUrl,
+      });
+    } catch (err) {
+      console.error('Toss Payments request failed:', err);
+      alert('결제창을 실행하는 중 오류가 발생했습니다.');
+      setIsLoading(false);
+    }
+  };
+
   // RevenueCat IAP 플랜 결제 처리 함수
   const handlePurchasePlan = async (planType: '1회충전' | '라이트' | '살롱') => {
     setIsLoading(true);
+    if (!isHybridApp()) {
+      requestTossPayment(planType);
+      return;
+    }
+
     try {
       const res = await nativeBridge.purchasePlan(planType);
       if (res.success) {
@@ -915,6 +977,11 @@ export default function HomePage() {
   // 구독 유저 조기 리셋 결제 처리 함수 (즉시 한도 리셋 및 주기 갱신)
   const handleEarlyResetPurchase = async (planType: '라이트' | '살롱') => {
     setIsLoading(true);
+    if (!isHybridApp()) {
+      requestTossPayment(planType);
+      return;
+    }
+
     try {
       const res = await nativeBridge.purchasePlan(planType);
       if (res.success) {
