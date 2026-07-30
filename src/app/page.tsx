@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ImageUploader from '@/components/ImageUploader';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
-import { Sparkles, ArrowRight, Download, Share2, RefreshCw, Key, ShieldCheck, HelpCircle, Activity, User, Check, Trash2, Settings, CreditCard, X, Venus, Mars, Coins } from 'lucide-react';
+import { Sparkles, ArrowRight, Download, Share2, RefreshCw, Key, ShieldCheck, HelpCircle, Activity, User, Check, Trash2, Settings, CreditCard, X, Venus, Mars, Coins, Compass } from 'lucide-react';
 
 interface StyleItem {
   name: string;
@@ -533,6 +533,7 @@ export default function HomePage() {
   const [totalPlanCredits, setTotalPlanCredits] = useState<number>(5);
   const [showExhaustedModal, setShowExhaustedModal] = useState<boolean>(false);
   const [showBillingModal, setShowBillingModal] = useState<boolean>(false);
+  const [isIosKakao, setIsIosKakao] = useState<boolean>(false);
 
   // 상단 동적 뱃지 텍스트 렌더링 헬퍼
   const renderCreditBadgeText = () => {
@@ -597,6 +598,31 @@ export default function HomePage() {
   }, [gender]);
 
 
+
+  // 카카오톡 인앱 브라우저 외부 이탈 스크립트
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    const isKakao = /KAKAOTALK/i.test(userAgent);
+
+    if (isKakao) {
+      const currentUrl = window.location.href;
+
+      // 1. 안드로이드 기기 -> Intent 스키마 사용하여 크롬으로 즉시 강제 이동
+      if (/Android/i.test(userAgent)) {
+        const schemeUrl = currentUrl.replace(/^https?:\/\//, '');
+        const intentUrl = `intent://${schemeUrl}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;package=com.android.chrome;end`;
+        window.location.href = intentUrl;
+      } 
+      // 2. iOS 기기 -> 외부 앱 열기 스키마 시도 및 사파리 수동 이동 가이드 오버레이 활성화
+      else if (/iPhone|iPad|iPod/i.test(userAgent)) {
+        const externalAppUrl = `kakaotalk://web/openExternalApp?url=${encodeURIComponent(currentUrl)}`;
+        window.location.href = externalAppUrl;
+        setIsIosKakao(true);
+      }
+    }
+  }, []);
 
   // 로컬스토리지 정보 마운트 시 로드 및 일일 무료 5회 리셋 처리
   useEffect(() => {
@@ -2322,6 +2348,61 @@ export default function HomePage() {
 
         </div>
       </footer>
+
+      {/* 2. iOS 카카오톡 인앱 브라우저 Safari 열기 안내 오버레이 */}
+      {isIosKakao && (
+        <div className="fixed inset-0 z-[9999] bg-zinc-950/98 flex flex-col items-center justify-center p-6 text-center font-sans">
+          {/* 지시선 애니메이션용 SVG 화살표 */}
+          <div className="absolute top-4 right-8 flex flex-col items-end gap-1 text-amber-400 animate-bounce">
+            <span className="text-xs font-bold font-mono">Safari로 열기 클릭!</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2.5}
+              stroke="currentColor"
+              className="w-8 h-8"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+            </svg>
+          </div>
+
+          <div className="max-w-xs w-full space-y-6">
+            <div className="w-16 h-16 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto text-amber-400">
+              <Compass className="w-9 h-9 animate-spin-slow" />
+            </div>
+
+            <div className="space-y-3">
+              <h2 className="text-lg font-extrabold text-white">Safari 브라우저로 이동합니다</h2>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                카카오톡 내부 브라우저에서는 결제 정보 및 횟수가 저장되지 않습니다.<br />
+                더욱 안정적인 시뮬레이션 이용을 위해 반드시 아래 가이드를 진행해 주세요!
+              </p>
+            </div>
+
+            {/* 안내 가이드 카드 */}
+            <div className="bg-zinc-900 border border-zinc-800 p-4.5 rounded-2xl text-left space-y-3.5 text-xs text-zinc-300">
+              <div className="flex gap-3">
+                <span className="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-amber-400 font-extrabold shrink-0">1</span>
+                <span className="leading-relaxed">우측 상단 또는 하단의 <strong>더보기(...)</strong> 또는 <strong>내보내기(공유)</strong> 아이콘을 탭합니다.</span>
+              </div>
+              <div className="flex gap-3">
+                <span className="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-amber-400 font-extrabold shrink-0">2</span>
+                <span className="leading-relaxed">나타나는 메뉴 리스트에서 <strong>[Safari로 열기]</strong>를 탭하여 전환합니다.</span>
+              </div>
+            </div>
+
+            {/* 수동 강제 닫기 (임시 입장용) */}
+            <button
+              onClick={() => setIsIosKakao(false)}
+              type="button"
+              className="text-[10px] text-zinc-600 hover:text-zinc-400 underline transition-colors"
+            >
+              그냥 카카오톡 웹뷰에서 구경할게요
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
