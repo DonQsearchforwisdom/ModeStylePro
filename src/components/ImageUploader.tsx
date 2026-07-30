@@ -51,42 +51,69 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
       return;
     }
 
-    // OOM 방지를 위해 FileReader 대신 URL.createObjectURL을 사용하여 메모리 사용량 최소화
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      // Canvas를 이용해 이미지 리사이징 (최대 긴 축 1024px)
-      const canvas = document.createElement('canvas');
-      const MAX_WIDTH_HEIGHT = 1024;
-      let width = img.width;
-      let height = img.height;
-
+    // 리사이징 계산 헬퍼 함수
+    const getResizedDimensions = (srcWidth: number, srcHeight: number, maxDim = 800) => {
+      let width = srcWidth;
+      let height = srcHeight;
       if (width > height) {
-        if (width > MAX_WIDTH_HEIGHT) {
-          height = Math.round((height * MAX_WIDTH_HEIGHT) / width);
-          width = MAX_WIDTH_HEIGHT;
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
         }
       } else {
-        if (height > MAX_WIDTH_HEIGHT) {
-          width = Math.round((width * MAX_WIDTH_HEIGHT) / height);
-          height = MAX_WIDTH_HEIGHT;
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
         }
       }
+      return { width, height };
+    };
 
+    // 리사이징 후 콜백 호출 및 캔버스 정리 헬퍼 함수
+    const drawAndCallback = (source: HTMLImageElement, srcWidth: number, srcHeight: number) => {
+      const { width, height } = getResizedDimensions(srcWidth, srcHeight);
+      let canvas: HTMLCanvasElement | null = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(img, 0, 0, width, height);
-        // 퀄리티 0.85로 JPG base64 변환
-        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        ctx.drawImage(source, 0, 0, width, height);
+        // 퀄리티 0.75로 JPG base64 변환 (용량 다이어트)
+        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.75);
         onImageSelected(resizedBase64);
       } else {
         setError('이미지 처리 중 오류가 발생했습니다.');
       }
-      // 즉시 메모리 해제
-      URL.revokeObjectURL(objectUrl);
+
+      // 캔버스 메모리 즉시 소멸 유도
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas = null;
+      }
+    };
+
+    // iOS/모바일 크롬 웹킷 버그가 있는 createImageBitmap 대신 안전한 비동기 Image 디코딩 사용
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.decoding = 'async'; // 비동기 디코딩 설정 (메인 스레드 OOM 완화)
+    img.onload = () => {
+      img.decode()
+        .then(() => {
+          URL.revokeObjectURL(objectUrl);
+          drawAndCallback(img, img.width, img.height);
+        })
+        .catch((err) => {
+          console.error('Image decoding error:', err);
+          // 디코딩 실패 시 동기식 드로잉으로 fallback 시도
+          try {
+            URL.revokeObjectURL(objectUrl);
+            drawAndCallback(img, img.width, img.height);
+          } catch (fallbackErr) {
+            setError('이미지 디코딩 중 오류가 발생했습니다.');
+          }
+        });
     };
     img.onerror = () => {
       setError('유효하지 않은 이미지 파일입니다.');
@@ -179,13 +206,13 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             accept="image/*"
             className="hidden"
           />
-          {/* 숨겨진 카메라 촬영 인풋 */}
+          {/* 숨겨진 카메라 촬영 인풋 (정식 시스템 카메라 호출을 위해 복구) */}
           <input
             type="file"
             ref={cameraInputRef}
             onChange={handleFileChange}
             accept="image/*"
-            capture={true}
+            capture="environment"
             className="hidden"
           />
         </div>
@@ -210,13 +237,13 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             className="hidden"
           />
 
-          {/* 모바일 카메라 촬영용 인풋 */}
+          {/* 모바일 카메라 촬영용 인풋 (capture 복구로 카메라 앱 권한 충돌 예방) */}
           <input
             type="file"
             ref={cameraInputRef}
             onChange={handleFileChange}
             accept="image/*"
-            capture={true}
+            capture="environment"
             className="hidden"
           />
 

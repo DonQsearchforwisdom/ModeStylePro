@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ModeStyle Pro | AI 헤어 시뮬레이터 & 업셀링 도구",
-  description: "고객 사진 한 장으로 10초 만에 다양한 프리미엄 헤어 시뮬레이션을 제안하고 시술을 유치하세요.",
+  title: "ModeStyle Pro | 헤어 시뮬레이터 & 업셀링",
+  description: "실제 고객의 사진으로 다양한 헤어 스타일을 시뮬레이션하고 프리미엄 시술을 제안하세요.",
 };
 
 export default function RootLayout({

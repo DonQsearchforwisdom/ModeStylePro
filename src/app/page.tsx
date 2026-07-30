@@ -644,10 +644,15 @@ export default function HomePage() {
     if (savedResults) {
       try {
         const parsedList: SimulationResult[] = JSON.parse(savedResults);
-        setResultsList(parsedList);
+        // 복구 시 원본 이미지(savedOriginalImage)를 각 아이템의 beforeImage에 주입
+        const restoredList = parsedList.map(item => ({
+          ...item,
+          beforeImage: savedOriginalImage || item.beforeImage
+        }));
+        setResultsList(restoredList);
 
         // 백그라운드에서 워터마크 파일 비동기 재생성하여 매핑
-        parsedList.forEach((item) => {
+        restoredList.forEach((item) => {
           createWatermarkedFile(item.afterImage, item.styleName, tempSalonName)
             .then((file) => {
               setResultsList((prev) =>
@@ -1050,7 +1055,11 @@ export default function HomePage() {
             newResult.watermarkedFile = file;
             setResultsList((prev) => {
               const next = [newResult, ...prev];
-              const serializedList = next.map(({ watermarkedFile, ...rest }) => rest);
+              // 세션스토리지 백업에는 최신 3개만 보관하고, 중복되는 beforeImage(원본)는 비워서 용량 최적화 (OOM 방지)
+              const serializedList = next.slice(0, 3).map(({ watermarkedFile, beforeImage, ...rest }) => ({
+                ...rest,
+                beforeImage: ''
+              }));
               safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
               return next;
             });
@@ -1060,7 +1069,10 @@ export default function HomePage() {
             // 실패해도 결과 카드는 정상 노출되도록 추가
             setResultsList((prev) => {
               const next = [newResult, ...prev];
-              const serializedList = next.map(({ watermarkedFile, ...rest }) => rest);
+              const serializedList = next.slice(0, 3).map(({ watermarkedFile, beforeImage, ...rest }) => ({
+                ...rest,
+                beforeImage: ''
+              }));
               safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
               return next;
             });
@@ -1195,7 +1207,10 @@ export default function HomePage() {
       const next = prev.filter((item) => item.id !== id);
       // 동기식 세션 백업
       if (next.length > 0) {
-        const serializedList = next.map(({ watermarkedFile, ...rest }) => rest);
+        const serializedList = next.slice(0, 3).map(({ watermarkedFile, beforeImage, ...rest }) => ({
+          ...rest,
+          beforeImage: ''
+        }));
         safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
       } else {
         try {
@@ -1850,59 +1865,109 @@ export default function HomePage() {
             <div className="lg:col-span-7 space-y-6">
 
               {/* Step 3: 스타일 그리드 (다중 선택 가능) */}
-              <div ref={stylesSectionRef} className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-3 scroll-mt-24">
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
+              <div ref={stylesSectionRef} className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-5 scroll-mt-24">
+                
+                {/* 1. 머리 기장 선택 섹션 */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-1.5">
                     <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">2</span>
-                    {gender} 헤어 스타일 (다중 선택 가능)
-                  </span>
-                  <span className="text-[10px] text-amber-400/80 font-medium">
-                    {selectedStyles.length}개 선택됨
-                  </span>
+                    <span className="text-zinc-300 text-xs font-bold">머리 기장 선택</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {LENGTH_OPTIONS[gender].map((length) => {
+                      const isSelected = selectedLength === length;
+                      return (
+                        <button
+                          key={length}
+                          type="button"
+                          onClick={() => setSelectedLength(length)}
+                          className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all ${
+                            isSelected
+                              ? 'bg-amber-400 border-amber-400 text-zinc-950 shadow-md font-extrabold scale-[1.02]'
+                              : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-700 text-zinc-400'
+                          }`}
+                        >
+                          {length}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {STYLE_OPTIONS[gender].map((style) => {
-                    const isChecked = selectedStyles.includes(style.name);
-                    return (
-                      <div
-                        key={style.name}
-                        onClick={() => handleStyleToggle(style.name)}
-                        className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 group relative cursor-pointer ${isChecked
-                          ? 'bg-amber-400/5 border-amber-400 text-amber-400 shadow-sm'
-                          : 'bg-zinc-900/30 border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-300'
-                          }`}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <span className="text-xs font-bold flex items-center gap-2.5">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden border border-zinc-850 bg-zinc-950 shrink-0 relative">
-                              <img
-                                src={style.image}
-                                alt={style.name}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            {style.name}
-                          </span>
-                          <span className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${isChecked
-                            ? 'border-amber-400 bg-amber-400 text-zinc-950'
-                            : 'border-zinc-700'
-                            }`}>
-                            {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                          </span>
+                {/* 2. 헤어 스타일 선택 섹션 */}
+                <div className="space-y-3 pt-4 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">3</span>
+                      {gender} 헤어 스타일 (다중 선택 가능)
+                    </span>
+                    <span className="text-[10px] text-amber-400/80 font-medium">
+                      {selectedStyles.length}개 선택됨
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {STYLE_OPTIONS[gender].map((style) => {
+                      const isChecked = selectedStyles.includes(style.name);
+                      return (
+                        <div
+                          key={style.name}
+                          onClick={() => handleStyleToggle(style.name)}
+                          className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 group relative cursor-pointer ${isChecked
+                            ? 'bg-amber-400/5 border-amber-400 text-amber-400 shadow-sm'
+                            : 'bg-zinc-900/30 border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-300'
+                            }`}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-xs font-bold flex items-center gap-2.5">
+                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-zinc-850 bg-zinc-950 shrink-0 relative">
+                                <img
+                                  src={style.image}
+                                  alt={style.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              {style.name}
+                            </span>
+                            <span className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${isChecked
+                              ? 'border-amber-400 bg-amber-400 text-zinc-950'
+                              : 'border-zinc-700'
+                              }`}>
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* 직접 스타일 요청 입력 폼 */}
-                <div className="border-t border-zinc-800/80 pt-4 mt-3.5 space-y-2">
-                  <span className="text-zinc-400 text-[11px] font-bold block">
-                    ✨ 원하는 스타일 직접 요청하기 (직접 입력)
-                  </span>
+                <div className="border-t border-zinc-800/80 pt-4 mt-3.5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCustomStyleToggle}
+                      disabled={!customStyleText.trim()}
+                      className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isCustomStyleApplied && customStyleText.trim()
+                          ? 'border-amber-400 bg-amber-400 text-zinc-950'
+                          : 'border-zinc-700 bg-zinc-900/40'
+                      }`}
+                    >
+                      {isCustomStyleApplied && customStyleText.trim() && <Check className="w-3 h-3 stroke-[3]" />}
+                    </button>
+                    <span 
+                      onClick={customStyleText.trim() ? handleCustomStyleToggle : undefined}
+                      className={`text-[11px] font-bold select-none ${
+                        customStyleText.trim() ? 'text-zinc-300 cursor-pointer hover:text-amber-400' : 'text-zinc-500'
+                      }`}
+                    >
+                      ✨ 원하는 스타일 직접 입력
+                    </span>
+                  </div>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -1911,24 +1976,6 @@ export default function HomePage() {
                       placeholder="예: 리프 가르마펌, 슬릭백 언더컷 등"
                       className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-850 hover:border-zinc-700 text-xs md:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-400 transition-all shadow-inner"
                     />
-                    <button
-                      type="button"
-                      onClick={handleCustomStyleToggle}
-                      disabled={!customStyleText.trim()}
-                      className={`px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm ${isCustomStyleApplied && customStyleText.trim()
-                        ? 'bg-amber-400 border-amber-400 text-zinc-950 font-extrabold'
-                        : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed'
-                        }`}
-                    >
-                      {isCustomStyleApplied && customStyleText.trim() ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          적용됨
-                        </>
-                      ) : (
-                        '적용'
-                      )}
-                    </button>
                   </div>
                 </div>
               </div>

@@ -100,6 +100,8 @@ export async function POST(request: NextRequest) {
 Analyze this photo of a ${gender} customer's face, head shape, and hair condition.
 Then, diagnose, detect length, and recommend exactly TOP 3 customized hair styles that perfectly suit the customer's face shape and hair condition. You do NOT need to restrict yourself to a predefined list. Recommend any creative and stylish hairstyles (e.g., "볼륨 셋팅 빌드펌", "시스루 레이어드 단발", "내추럴 드롭컷 & 가일" etc.).
 
+CRITICAL REQUIREMENT: Among the TOP 3 recommended hairstyles, EXACTLY ONE recommended style MUST be a bold haircut that dramatically shortens and organizes the hair length (e.g., if the customer has long or medium hair, recommend a chic shortcut, a cool tassel bob (단발 태슬컷), or a short crop cut. If they already have short hair, suggest an ultra-short tidy cut or pixel crop). You must explicitly state in the "reason" field that this style is a bold length transformation for a fresh look, using phrases like '과감한 기장 정리', '단발 변신', '숏컷 변신', or '과감한 기장 컷트'.
+
 Return the response in raw JSON format matching this structure:
 {
   "faceShape": "얼굴형 분석 결과 (e.g. 계란형, 둥근형, 각진형, 긴 얼굴형, 역삼각형 등)",
@@ -147,30 +149,51 @@ Make sure all text fields (except hiddenPrompt which must be in English) are wri
     } catch (parseErr) {
       console.error('Failed to parse Gemini JSON:', responseText);
       // JSON 파싱 실패 시 기본 복구 응답
+      const fallbackRecommendations = gender === '여성' ? [
+        { 
+          styleName: '빌드/엘리자벳 디자이너 펌', 
+          reason: '얼굴형 보완 및 부드러운 볼륨감에 최적화된 클래식 스타일',
+          stylingTip: '샴푸 후 가볍게 털어 말린 다음 컬 전용 에센스를 모발 끝 위주로 구기듯 발라 마무리해 줍니다.',
+          hiddenPrompt: 'Redesign the hair of the customer to build perm style. Apply elegant natural makeup matching this style. Keep original face, background, and clothes identical.'
+        },
+        { 
+          styleName: '레이어드 C컬펌', 
+          reason: '화사하고 입체감 있는 텍스처를 주어 트렌디한 이미지를 연출',
+          stylingTip: '머리를 뒤에서 앞으로 말려 볼륨을 살린 후 소프트 왁스나 매트 왁스를 소량 발라 질감을 강조해 줍니다.',
+          hiddenPrompt: 'Redesign the hair of the customer to layered c-curl style. Apply beautiful trend makeup matching this style. Keep original face, background, and clothes identical.'
+        },
+        { 
+          styleName: '태슬컷 & 슬릭펌', 
+          reason: '과감한 기장 정리를 통해 턱선 라인을 살리고 세련된 단발 변신을 제안합니다. 시크하고 가벼운 결을 주어 관리가 매우 수월합니다.',
+          stylingTip: '위에서 아래로 드라이한 뒤 끝부분에 폴리쉬 오일을 소량 발라 슬릭하고 웨트한 느낌을 살려 손질합니다.',
+          hiddenPrompt: 'Redesign the hair of the customer to tassel bob style. Apply chic natural makeup. Keep original face, background, and clothes identical.'
+        }
+      ] : [
+        { 
+          styleName: '시스루 댄디컷', 
+          reason: '얼굴형 보완 및 차분하고 깔끔한 라인 정리에 최적화된 클래식 스타일',
+          stylingTip: '머릿결 방향대로 앞으로 쏟아 말린 후 가벼운 에센스를 도포하여 댄디함을 연출합니다.',
+          hiddenPrompt: 'Redesign the hair of the customer to dandy cut style. Apply neat male grooming. Keep original face, background, and clothes identical.'
+        },
+        { 
+          styleName: '쉐도우 애즈펌', 
+          reason: '이마가 살짝 노출되는 자연스러운 가르마와 쉐도우 컬이 조화되어 부드러운 인상을 줍니다.',
+          stylingTip: '가르마를 탄 뒤 모근에 열을 주어 볼륨을 살리고 컬크림을 도포하여 자연스러운 웨이브를 고정합니다.',
+          hiddenPrompt: 'Redesign the hair of the customer to shadow perm style. Apply neat male grooming. Keep original face, background, and clothes identical.'
+        },
+        { 
+          styleName: '드롭컷 & 가일 스타일', 
+          reason: '과감하게 이마를 드러내는 기장 정리를 적용해 남자답고 샤프한 이미지를 연출합니다. 짧은 머리를 통한 시원한 변신을 제안합니다.',
+          stylingTip: '가운뎃머리는 앞으로 내리고 양옆 앞머리는 올려 가일 느낌을 준 뒤 왁스와 스프레이로 고정합니다.',
+          hiddenPrompt: 'Redesign the hair of the customer to drop cut and gail style. Apply neat male grooming. Keep original face, background, and clothes identical.'
+        }
+      ];
+
       return NextResponse.json({
         faceShape: '분석 중 얼굴형 감지 보류',
         hairCondition: '모발 진단 데이터 렌더링 지연',
         currentLength: lengths[1] || '단발',
-        recommendations: [
-          { 
-            styleName: styles[0], 
-            reason: '얼굴형 보완 및 부드러운 볼륨감에 최적화된 클래식 스타일',
-            stylingTip: '샴푸 후 가볍게 털어 말린 다음 컬 전용 에센스를 모발 끝 위주로 구기듯 발라 마무리해 줍니다.',
-            hiddenPrompt: `Redesign the hair of the customer to ${styles[0]} style. Apply elegant natural makeup matching this style. Keep original face, background, and clothes identical. Replace only hair with high-quality salon hair styling, and apply matching makeup.`
-          },
-          { 
-            styleName: styles[1], 
-            reason: '화사하고 입체감 있는 텍스처를 주어 트렌디한 이미지를 연출',
-            stylingTip: '머리를 뒤에서 앞으로 말려 볼륨을 살린 후 소프트 왁스나 매트 왁스를 소량 발라 질감을 강조해 줍니다.',
-            hiddenPrompt: `Redesign the hair of the customer to ${styles[1]} style. Apply beautiful trend makeup matching this style. Keep original face, background, and clothes identical. Replace only hair with high-quality salon hair styling, and apply matching makeup.`
-          },
-          { 
-            styleName: styles[2], 
-            reason: '깔끔한 라인 정리와 두상 교정 펌을 병행하여 손쉬운 관리가 가능',
-            stylingTip: '위에서 아래로 찬바람 위주로 말린 후 오일 에센스를 소량 도포해 차분함을 유지해 줍니다.',
-            hiddenPrompt: `Redesign the hair of the customer to ${styles[2]} style. Apply natural grooming and matching makeup. Keep original face, background, and clothes identical. Replace only hair with high-quality salon hair styling, and apply matching makeup.`
-          }
-        ]
+        recommendations: fallbackRecommendations
       });
     }
 
