@@ -952,6 +952,55 @@ export default function HomePage() {
     }
   };
 
+  // 구독 해지 / 정기 결제 취소 처리 함수
+  const handleCancelSubscription = async () => {
+    const isSubscribed = userPlan === '라이트' || userPlan === '살롱';
+    const planText = isSubscribed ? '구독 정기 결제' : '플랜 이용';
+    
+    if (userPlan === '무료체험') {
+      alert('현재 가입된 유료 플랜 또는 구독 요금제가 없습니다.');
+      return;
+    }
+
+    const confirmCancel = confirm(
+      `정말로 [${userPlan}] ${planText}를 취소/해지하시겠습니까?\n해지 시 즉시 무료 체험 모드로 전환되며 잔여 크레딧이 5회로 리셋됩니다.`
+    );
+    
+    if (!confirmCancel) return;
+
+    setIsLoading(true);
+    try {
+      // 1. 하이브리드 앱 환경인 경우 스토어 구독 취소 가이드 및 네이티브 시그널 전달
+      if (isHybridApp()) {
+        if (typeof window !== 'undefined') {
+          if ((window as any).webkit?.messageHandlers?.revenueCatHandler) {
+            await (window as any).webkit.messageHandlers.revenueCatHandler.postMessage({
+              action: 'cancel'
+            });
+          }
+          if ((window as any).AndroidRevenueCat) {
+            (window as any).AndroidRevenueCat.cancelSubscription();
+          }
+        }
+        alert('💡 모바일 앱의 정기 구독 해지는 App Store / Play Store의 [설정 > 구독 관리] 메뉴를 통해서도 안전하게 취소하실 수 있습니다.');
+      }
+
+      // 2. 공통 스토리지 초기화 및 무료체험 복귀
+      setRemainingCredits(5);
+      setTotalPlanCredits(5);
+      setUserPlan('무료체험');
+      nativeBridge.saveCreditsData(5, 5, '무료체험');
+      
+      alert('🔒 구독 요금제가 정상적으로 해지되었으며, 기본 [무료 체험] 플랜으로 안전하게 복귀되었습니다.');
+      setShowBillingModal(false);
+    } catch (e) {
+      console.error(e);
+      alert('구독 해지 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // 인앱 결제 구매 내역 복원 (Restore Purchases)
   const handleRestorePurchases = async () => {
     setIsLoading(true);
@@ -1424,6 +1473,28 @@ export default function HomePage() {
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* 현재 이용 중인 플랜 정보 요약 및 해지 단추 */}
+            <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-2xl flex items-center justify-between shadow-inner">
+              <div className="space-y-0.5">
+                <span className="text-[10px] text-zinc-500 font-bold block">이용 중인 플랜</span>
+                <span className="text-xs font-extrabold text-white">
+                  {userPlan} 요금제
+                  <span className="text-[10px] text-zinc-400 font-normal ml-1.5">
+                    ({remainingCredits.toLocaleString('ko-KR')}회 남음)
+                  </span>
+                </span>
+              </div>
+              {userPlan !== '무료체험' && (
+                <button
+                  onClick={handleCancelSubscription}
+                  type="button"
+                  className="px-3.5 py-1.5 rounded-lg border border-red-950 bg-red-950/20 hover:bg-red-900/40 text-red-400 font-bold text-[10px] active:scale-[0.98] transition-all"
+                >
+                  {userPlan === '라이트' || userPlan === '살롱' ? '구독 취소' : '이용 해지'}
+                </button>
+              )}
             </div>
 
             {/* 충전 요금제 목록 */}
