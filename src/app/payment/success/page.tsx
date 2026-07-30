@@ -14,44 +14,69 @@ function PaymentSuccessContent() {
     const credits = parseInt(searchParams.get('credits') || '0', 10);
     const total = parseInt(searchParams.get('total') || '0', 10);
 
-    // Toss Payments 결과 검증용 파라미터 (원격 기록용)
+    // Toss Payments 결과 검증용 파라미터
     const paymentKey = searchParams.get('paymentKey');
     const orderId = searchParams.get('orderId');
     const amount = searchParams.get('amount');
 
-    console.log('[Toss Payment Success]', { paymentKey, orderId, amount, plan, credits, total });
+    const syncPaymentData = async () => {
+      try {
+        // 1. 서버 API 호출을 통해 DB 갱신 시도 (회원 세션 상태인 경우)
+        const res = await fetch('/api/payment/success', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan, credits, total, paymentKey, orderId, amount }),
+        });
+        const data = await res.json();
 
-    if (credits > 0) {
-      // 로컬스토리지 및 보안 스토리지 저장
-      if (typeof window !== 'undefined' && window.localStorage) {
-        // 기존 크레딧 읽어서 신규 충전분 합산(누적)
-        const prevRemaining = parseInt(localStorage.getItem('credits_remaining') || '5', 10);
-        const prevTotal = parseInt(localStorage.getItem('total_plan_credits') || '5', 10);
-        const newRemaining = prevRemaining + credits;
-        const newTotal = prevTotal + total;
-
-        localStorage.setItem('credits_remaining', newRemaining.toString());
-        localStorage.setItem('total_plan_credits', newTotal.toString());
-        localStorage.setItem('user_plan', plan);
-        localStorage.setItem('free_credits_initialized', 'true');
-        localStorage.setItem('last_purchased_plan', plan);
-
-        // 네이티브 연동 백업 브릿지가 있는 경우 호출
-        try {
-          if ((window as any).webkit?.messageHandlers?.keychainHandler) {
-            (window as any).webkit.messageHandlers.keychainHandler.postMessage({
-              action: 'saveCredits',
-              data: { remaining: newRemaining, total: newTotal, plan }
-            });
+        if (data.success && data.dbUpdated) {
+          console.log('[Server DB Sync Success]', data);
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem('credits_remaining', data.credits.toString());
+            localStorage.setItem('total_plan_credits', data.total.toString());
+            localStorage.setItem('user_plan', data.plan);
+            localStorage.setItem('free_credits_initialized', 'true');
+            localStorage.setItem('last_purchased_plan', data.plan);
           }
-          if ((window as any).AndroidSecureStorage) {
-            (window as any).AndroidSecureStorage.saveCredits(newRemaining, newTotal, plan);
+          return;
+        }
+      } catch (err) {
+        console.warn('Server payment update failed, falling back to local storage:', err);
+      }
+
+      // 2. 비회원이거나 서버 통신 실패 시 로컬스토리지 백업 저장 (합산)
+      if (credits > 0) {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const prevRemaining = parseInt(localStorage.getItem('credits_remaining') || '5', 10);
+          const prevTotal = parseInt(localStorage.getItem('total_plan_credits') || '5', 10);
+          const newRemaining = prevRemaining + credits;
+          const newTotal = prevTotal + total;
+
+          localStorage.setItem('credits_remaining', newRemaining.toString());
+          localStorage.setItem('total_plan_credits', newTotal.toString());
+          localStorage.setItem('user_plan', plan);
+          localStorage.setItem('free_credits_initialized', 'true');
+          localStorage.setItem('last_purchased_plan', plan);
+
+          // 네이티브 연동 백업 브릿지가 있는 경우 호출
+          try {
+            if ((window as any).webkit?.messageHandlers?.keychainHandler) {
+              (window as any).webkit.messageHandlers.keychainHandler.postMessage({
+                action: 'saveCredits',
+                data: { remaining: newRemaining, total: newTotal, plan }
+              });
+            }
+            if ((window as any).AndroidSecureStorage) {
+              (window as any).AndroidSecureStorage.saveCredits(newRemaining, newTotal, plan);
+            }
+          } catch (e) {
+            console.warn('Native secure storage sync failed on success page:', e);
           }
-        } catch (e) {
-          console.warn('Native secure storage sync failed on success page:', e);
         }
       }
-    }
+    };
+
+    syncPaymentData();
 
     // 3초 후 메인화면으로 자동 리다이렉트
     const timer = setTimeout(() => {

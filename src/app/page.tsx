@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import ImageUploader from '@/components/ImageUploader';
 import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { Sparkles, ArrowRight, Download, Share2, RefreshCw, Key, ShieldCheck, HelpCircle, Activity, User, Check, Trash2, Settings, CreditCard, X, Venus, Mars, Coins, Compass } from 'lucide-react';
@@ -534,6 +535,8 @@ export default function HomePage() {
   const [showExhaustedModal, setShowExhaustedModal] = useState<boolean>(false);
   const [showBillingModal, setShowBillingModal] = useState<boolean>(false);
   const [isIosKakao, setIsIosKakao] = useState<boolean>(false);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const { data: session, status } = useSession();
 
   // 상단 동적 뱃지 텍스트 렌더링 헬퍼
   const renderCreditBadgeText = () => {
@@ -698,14 +701,24 @@ export default function HomePage() {
     const savedDesigner = safeLocalStorage.getItem('modestyle_designer_name');
     if (savedDesigner) setDesignerName(savedDesigner);
 
-    // 2. 기기 식별 기반 최초 무료 크레딧 초기화 및 상태 동기화
-    nativeBridge.initializeFreeCredits().then(() => {
+    // 2. 기기 식별 기반 최초 무료 크레딧 초기화
+    nativeBridge.initializeFreeCredits();
+  }, []);
+
+  // 로그인 세션 상태와 로컬 크레딧 동기화
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      const sUser = session.user as any;
+      setRemainingCredits(sUser.remainingCredits ?? 5);
+      setTotalPlanCredits(sUser.totalPlanCredits ?? 5);
+      setUserPlan(sUser.userPlan ?? '무료체험');
+    } else if (status === 'unauthenticated') {
       const data = nativeBridge.getCreditsData();
       setRemainingCredits(data.remaining);
       setTotalPlanCredits(data.total);
       setUserPlan(data.plan);
-    });
-  }, []);
+    }
+  }, [session, status]);
 
   // 로딩 텍스트 순환 타이머
   useEffect(() => {
@@ -1398,6 +1411,42 @@ export default function HomePage() {
               {renderCreditBadgeText()}
             </span>
           </div>
+
+          {/* 간편 로그인 / 회원 정보 상태 */}
+          {status === 'authenticated' && session?.user ? (
+            <div className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 px-2.5 py-1.5 rounded-full text-xs">
+              {session.user.image ? (
+                <img
+                  src={session.user.image}
+                  alt={session.user.name || '유저'}
+                  className="w-5.5 h-5.5 rounded-full object-cover border border-zinc-800"
+                />
+              ) : (
+                <div className="w-5.5 h-5.5 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-300 font-bold">
+                  {session.user.name?.[0] || 'U'}
+                </div>
+              )}
+              <span className="text-[11px] font-bold text-zinc-300 max-w-[80px] truncate">
+                {session.user.name}
+              </span>
+              <button
+                onClick={() => signOut()}
+                type="button"
+                className="text-[10px] text-zinc-500 hover:text-red-400 font-bold ml-1 transition-colors"
+                title="로그아웃"
+              >
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLoginModal(true)}
+              type="button"
+              className="px-3.5 py-1.5 rounded-full border border-zinc-800 hover:border-zinc-700 bg-zinc-900 text-zinc-300 font-bold text-[11px] active:scale-[0.98] transition-all"
+            >
+              로그인
+            </button>
+          )}
 
           {/* 피드백 반영: 우측 상단 톱니바퀴 환경설정 버튼 */}
           <button
@@ -2400,6 +2449,68 @@ export default function HomePage() {
             >
               그냥 카카오톡 웹뷰에서 구경할게요
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. 소셜 로그인 모달 팝업 */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel w-full max-w-sm rounded-3xl border border-zinc-800 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="font-extrabold text-base text-white flex items-center gap-2">
+                <User className="w-5 h-5 text-amber-400" />
+                간편 로그인 / 회원가입
+              </h3>
+              <button
+                onClick={() => setShowLoginModal(false)}
+                className="text-zinc-500 hover:text-zinc-300"
+                type="button"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-400 text-center leading-relaxed">
+              3초 간편 소셜 로그인을 통해<br />
+              결제 내역 및 이전 시뮬레이션 데이터를 안전하게 보존하세요!
+            </p>
+
+            <div className="space-y-3">
+              {/* 구글 로그인 */}
+              <button
+                onClick={() => signIn('google')}
+                type="button"
+                className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2.5 shadow-md transition-all active:scale-[0.99] cursor-pointer"
+              >
+                <span className="font-extrabold font-mono text-[13px] text-red-500">G</span>
+                구글 계정으로 로그인
+              </button>
+
+              {/* 네이버 로그인 */}
+              <button
+                onClick={() => signIn('naver')}
+                type="button"
+                className="w-full py-3.5 px-4 rounded-xl bg-[#03C75A] hover:bg-[#02b350] text-white font-bold text-xs flex items-center justify-center gap-2.5 shadow-md transition-all active:scale-[0.99] cursor-pointer"
+              >
+                <span className="font-extrabold text-[13px]">N</span>
+                네이버 계정으로 로그인
+              </button>
+
+              {/* 카카오 로그인 */}
+              <button
+                onClick={() => signIn('kakao')}
+                type="button"
+                className="w-full py-3.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#ebd300] text-[#191919] font-bold text-xs flex items-center justify-center gap-2.5 shadow-md transition-all active:scale-[0.99] cursor-pointer"
+              >
+                <span className="font-extrabold text-[13px]">K</span>
+                카카오 계정으로 로그인
+              </button>
+            </div>
+
+            <div className="text-[10px] text-zinc-600 text-center">
+              로그인 시 이용약관 및 개인정보처리방침에 동의한 것으로 간주됩니다.
+            </div>
           </div>
         </div>
       )}
