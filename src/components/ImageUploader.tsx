@@ -43,10 +43,10 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
       return;
     }
 
-    // 용량 제한 (5MB)
-    const maxSize = 5 * 1024 * 1024;
+    // 용량 제한 (20MB로 확장하여 모바일 카메라 촬영 고화질 파일도 무리 없이 수용)
+    const maxSize = 20 * 1024 * 1024;
     if (file.size > maxSize) {
-      setError('파일 용량이 5MB를 초과합니다. 더 작은 이미지를 선택해 주세요.');
+      setError('파일 용량이 20MB를 초과합니다. 더 작은 이미지를 선택해 주세요.');
       return;
     }
 
@@ -102,7 +102,9 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
     };
 
     // OOM 방지를 위해 createImageBitmap 지원 시 디코더 레벨에서 즉시 다운샘플링 처리
-    if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
+    // 단, 모바일 크롬/사파리 웹뷰 환경에서는 큰 이미지 전달 시 램 버스트로 인한 크래시 버그가 잦으므로
+    // 모바일 환경(!isMobile)이 아닐 때만 createImageBitmap 분기를 사용하도록 강제 우회합니다.
+    if (typeof window !== 'undefined' && 'createImageBitmap' in window && !isMobile) {
       // 이미지 디코딩 단계에서 타겟 크기(모바일 500px / PC 800px)로 제한하여 OOM 원천 차단
       createImageBitmap(file, { resizeWidth: targetMaxDim })
         .then((bitmap) => {
@@ -125,6 +127,10 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
           .then(() => {
             URL.revokeObjectURL(objectUrl);
             drawAndCallback(img, img.width, img.height);
+            // 메모리 소멸 유도 및 참조 끊기
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
           })
           .catch((err) => {
             console.error('Image decoding error:', err);
@@ -134,11 +140,17 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             } catch (fallbackErr) {
               setError('이미지 디코딩 중 오류가 발생했습니다.');
             }
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
           });
       };
       img.onerror = () => {
         setError('유효하지 않은 이미지 파일입니다.');
         URL.revokeObjectURL(objectUrl);
+        img.onload = null;
+        img.onerror = null;
+        img.src = '';
       };
       img.src = objectUrl;
     }
