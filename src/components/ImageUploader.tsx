@@ -70,7 +70,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
     };
 
     // 리사이징 후 콜백 호출 및 캔버스 정리 헬퍼 함수
-    const drawAndCallback = (source: HTMLImageElement, srcWidth: number, srcHeight: number) => {
+    const drawAndCallback = (source: HTMLImageElement | ImageBitmap, srcWidth: number, srcHeight: number) => {
       const { width, height } = getResizedDimensions(srcWidth, srcHeight);
       let canvas: HTMLCanvasElement | null = document.createElement('canvas');
       canvas.width = width;
@@ -92,34 +92,54 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
         canvas.height = 0;
         canvas = null;
       }
+
+      // ImageBitmap 리소스 즉시 소멸 유도
+      if (source && typeof (source as any).close === 'function') {
+        (source as any).close();
+      }
     };
 
-    // iOS/모바일 크롬 웹킷 버그가 있는 createImageBitmap 대신 안전한 비동기 Image 디코딩 사용
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.decoding = 'async'; // 비동기 디코딩 설정 (메인 스레드 OOM 완화)
-    img.onload = () => {
-      img.decode()
-        .then(() => {
-          URL.revokeObjectURL(objectUrl);
-          drawAndCallback(img, img.width, img.height);
+    // OOM 방지를 위해 createImageBitmap 지원 시 디코더 레벨에서 즉시 다운샘플링 처리
+    if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
+      // 이미지 디코딩 단계에서 800px로 제한하여 원본 비트맵 OOM 원천 차단
+      createImageBitmap(file, { resizeWidth: 800 })
+        .then((bitmap) => {
+          drawAndCallback(bitmap, bitmap.width, bitmap.height);
         })
         .catch((err) => {
-          console.error('Image decoding error:', err);
-          // 디코딩 실패 시 동기식 드로잉으로 fallback 시도
-          try {
+          console.warn('createImageBitmap failed, falling back to legacy loader:', err);
+          legacyLoadFallback(file);
+        });
+    } else {
+      legacyLoadFallback(file);
+    }
+
+    function legacyLoadFallback(file: File) {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.decoding = 'async'; // 비동기 디코딩 설정 (메인 스레드 OOM 완화)
+      img.onload = () => {
+        img.decode()
+          .then(() => {
             URL.revokeObjectURL(objectUrl);
             drawAndCallback(img, img.width, img.height);
-          } catch (fallbackErr) {
-            setError('이미지 디코딩 중 오류가 발생했습니다.');
-          }
-        });
-    };
-    img.onerror = () => {
-      setError('유효하지 않은 이미지 파일입니다.');
-      URL.revokeObjectURL(objectUrl);
-    };
-    img.src = objectUrl;
+          })
+          .catch((err) => {
+            console.error('Image decoding error:', err);
+            try {
+              URL.revokeObjectURL(objectUrl);
+              drawAndCallback(img, img.width, img.height);
+            } catch (fallbackErr) {
+              setError('이미지 디코딩 중 오류가 발생했습니다.');
+            }
+          });
+      };
+      img.onerror = () => {
+        setError('유효하지 않은 이미지 파일입니다.');
+        URL.revokeObjectURL(objectUrl);
+      };
+      img.src = objectUrl;
+    }
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
