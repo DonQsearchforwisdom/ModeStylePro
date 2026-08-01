@@ -44,14 +44,14 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
       return;
     }
 
-    // 용량 제한 (15MB)
-    const maxSize = 15 * 1024 * 1024;
+    // 용량 제한 (5MB)
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      setError('파일 용량이 15MB를 초과합니다. 더 작은 이미지를 선택해 주세요.');
+      setError('파일 용량이 5MB를 초과합니다. 더 작은 이미지를 선택해 주세요.');
       return;
     }
 
-    // 리사이징 계산 헬퍼 함수
+    // 리사이징 계산 헬퍼 함수 (고품질 화질 유지를 위해 최대 800px로 제한)
     const getResizedDimensions = (srcWidth: number, srcHeight: number, maxDim = 800) => {
       let width = srcWidth;
       let height = srcHeight;
