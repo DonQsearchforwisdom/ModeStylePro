@@ -458,6 +458,7 @@ export default function HomePage() {
 
   const simulatorRef = useRef<HTMLDivElement>(null);
   const stylesSectionRef = useRef<HTMLDivElement>(null);
+  const isRestored = useRef<boolean>(false);
 
   // 성별 변경 시 기장과 스타일 초기화 및 sessionStorage에 성별 백업
   useEffect(() => {
@@ -473,6 +474,18 @@ export default function HomePage() {
     setDiagnosisError(null);
     safeSessionStorage.setItem('modestyle_gender', gender);
   }, [gender]);
+
+  // selectedLength 변경 시 세션스토리지에 자동 백업
+  useEffect(() => {
+    if (!isRestored.current) return;
+    safeSessionStorage.setItem('modestyle_selected_length', selectedLength);
+  }, [selectedLength]);
+
+  // selectedStyles 변경 시 세션스토리지에 자동 백업
+  useEffect(() => {
+    if (!isRestored.current) return;
+    safeSessionStorage.setItem('modestyle_selected_styles', JSON.stringify(selectedStyles));
+  }, [selectedStyles]);
 
 
 
@@ -517,6 +530,25 @@ export default function HomePage() {
     const savedCustomApplied = safeSessionStorage.getItem('modestyle_is_custom_style_applied');
     if (savedCustomApplied === 'true') {
       setIsCustomStyleApplied(true);
+    }
+
+    // 0-1-3. 기장 및 스타일 선택 상태 복구
+    const savedLength = safeSessionStorage.getItem('modestyle_selected_length');
+    if (savedLength) {
+      setSelectedLength(savedLength);
+    } else {
+      setSelectedLength(LENGTH_OPTIONS[savedGender === '남성' ? '남성' : '여성'][0]);
+    }
+
+    const savedStyles = safeSessionStorage.getItem('modestyle_selected_styles');
+    if (savedStyles) {
+      try {
+        setSelectedStyles(JSON.parse(savedStyles));
+      } catch (e) {
+        setSelectedStyles([STYLE_OPTIONS[savedGender === '남성' ? '남성' : '여성'][0].name]);
+      }
+    } else {
+      setSelectedStyles([STYLE_OPTIONS[savedGender === '남성' ? '남성' : '여성'][0].name]);
     }
 
     // 0-2. 업로드된 원본 이미지 복구
