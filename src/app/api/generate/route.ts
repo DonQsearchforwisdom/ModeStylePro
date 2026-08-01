@@ -130,8 +130,8 @@ export async function POST(request: NextRequest) {
     
     formData.append('init_image', blob, `image.${mimeType.split('/')[1] || 'jpeg'}`);
     formData.append('init_image_mode', 'IMAGE_STRENGTH');
-    // 얼굴 형태 및 이목구비를 완벽히 유지하기 위해 0.65 수준으로 강하게 바인딩 튜닝
-    formData.append('image_strength', '0.65');
+    // 얼굴 형태 및 이목구비를 최대한 조화롭게 유지하고 헤어 스타일 변화 강도를 높이기 위해 0.45 수준으로 튜닝
+    formData.append('image_strength', '0.45');
     
     // 긍정 프롬프트
     formData.append('text_prompts[0][text]', instruction);
