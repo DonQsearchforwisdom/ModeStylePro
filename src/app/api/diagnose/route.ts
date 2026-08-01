@@ -119,8 +119,8 @@ Return the response in raw JSON format matching this structure:
 Make sure all text fields (except hiddenPrompt which must be in English) are written in Korean. Do not add markdown wrapping (like \`\`\`json). Return only pure JSON string.`;
 
     // SDK의 오작동 및 예기치 못한 환경 변수 충돌(ACCESS_TOKEN_TYPE_UNSUPPORTED)을 100% 방지하기 위해 
-    // 구글 제미나이 공식 안정판(v1) REST API 엔드포인트 및 최상위 프로 분석 모델(gemini-pro-latest)로 직접 HTTP POST를 수행합니다.
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-pro-latest:generateContent?key=${apiKey}`;
+    // 구글 제미나이 공식 v1beta REST API 엔드포인트 및 최상위 프로 분석 모델(gemini-pro-latest)로 직접 HTTP POST를 수행합니다.
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key=${apiKey}`;
     
     const payload = {
       contents: [
