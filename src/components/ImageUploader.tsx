@@ -14,6 +14,134 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 인앱 웹카메라 관련 훅
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user'); // 셀카 전면 기본
+  const [isCameraLoading, setIsCameraLoading] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // 인앱 카메라 켜기
+  const startCamera = async () => {
+    setError(null);
+    setIsCameraLoading(true);
+    setIsCameraActive(true);
+
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      // 전후면 카메라 및 적절한 모바일 캡처 비디오 해상도 설정
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: cameraFacing,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        // iOS 사파리 정책 대응 play()
+        videoRef.current.play().catch(e => console.error("Video play error:", e));
+      }
+    } catch (err: any) {
+      console.error("Camera activation failed:", err);
+      setError("카메라 권한을 획득할 수 없거나 카메라가 사용 중입니다. 앨범 선택을 이용해 주세요.");
+      setIsCameraActive(false);
+    } finally {
+      setIsCameraLoading(false);
+    }
+  };
+
+  // 인앱 카메라 끄기 및 메모리 반환
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  // 전면/후면 전환
+  const toggleCameraFacing = () => {
+    setCameraFacing(prev => (prev === 'user' ? 'environment' : 'user'));
+  };
+
+  // 카메라 전환 시 재시작
+  useEffect(() => {
+    if (isCameraActive) {
+      startCamera();
+    }
+  }, [cameraFacing]);
+
+  // 언마운트 시 트랙 릴리즈
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  // 사진 프레임 캡처 후 썸네일 변환 및 메모리 수거
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const videoWidth = video.videoWidth || 640;
+    const videoHeight = video.videoHeight || 480;
+    
+    // 모바일 리사이징 해상도에 비례하게 캡처 크기 연산
+    const targetMaxDim = isMobile ? 500 : 800;
+    let width = videoWidth;
+    let height = videoHeight;
+    
+    if (width > height) {
+      if (width > targetMaxDim) {
+        height = Math.round((height * targetMaxDim) / width);
+        width = targetMaxDim;
+      }
+    } else {
+      if (height > targetMaxDim) {
+        width = Math.round((width * targetMaxDim) / height);
+        height = targetMaxDim;
+      }
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // 전면 셀카 촬영 시 거울 반전(Mirror Effect) 드로잉 적용
+      if (cameraFacing === 'user') {
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(video, 0, 0, width, height);
+      
+      if (cameraFacing === 'user') {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+
+      const base64 = canvas.toDataURL('image/jpeg', 0.75);
+      onImageSelected(base64);
+      stopCamera();
+    } else {
+      setError("사진 캡처 도중 캔버스 렌더링에 실패했습니다.");
+    }
+  };
+
   useEffect(() => {
     const checkMobile = () => {
       const mobileQuery = window.matchMedia('(max-width: 768px)');
@@ -192,7 +320,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             {isMobile ? (
               <div className="flex flex-col gap-2 w-full max-w-[140px]">
                 <button
-                  onClick={triggerCameraInput}
+                  onClick={startCamera}
                   type="button"
                   className="bg-amber-400 text-zinc-950 py-2.5 rounded-full font-bold text-xs hover:bg-amber-500 transition-colors shadow-md text-center"
                 >
@@ -290,7 +418,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
           <p className="text-zinc-500 text-xs max-w-[260px] leading-relaxed px-4 mb-5">
             {isMobile
               ? '카메라로 촬영하거나 사진첩에서 불러올 수 있습니다.'
-              : 'JPG, PNG, WebP 지원 (최대 15MB)'}
+              : 'JPG, PNG, WebP 지원 (최대 20MB)'}
             <br />
           </p>
 
@@ -298,7 +426,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             <div className="flex flex-col gap-2 w-full max-w-[240px]">
               <button
                 type="button"
-                onClick={triggerCameraInput}
+                onClick={startCamera}
                 className="w-full py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-500 text-zinc-950 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-400/10 active:scale-[0.98] transition-transform"
               >
                 📸 즉시 사진 촬영하기
@@ -318,6 +446,70 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
               {error}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 인앱 웹 카메라 모달 오버레이 */}
+      {isCameraActive && (
+        <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex flex-col items-center justify-between p-4 md:p-6">
+          {/* 모달 상단 정보바 */}
+          <div className="w-full max-w-md flex items-center justify-between text-white py-2">
+            <span className="text-xs font-bold tracking-wider text-amber-400">IN-APP WEB CAMERA</span>
+            <button
+              onClick={stopCamera}
+              type="button"
+              className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-400 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* 비디오 뷰포트 */}
+          <div className="relative w-full max-w-md aspect-[3/4] rounded-2xl overflow-hidden border border-zinc-850 bg-zinc-950 shadow-2xl flex items-center justify-center">
+            {isCameraLoading && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-zinc-950/80 gap-3 text-zinc-400 text-xs">
+                <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+                카메라를 준비하고 있습니다...
+              </div>
+            )}
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              className={`w-full h-full object-cover ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''}`}
+            />
+          </div>
+
+          {/* 하단 컨트롤러 패널 */}
+          <div className="w-full max-w-md flex items-center justify-around py-6 gap-4">
+            {/* 전후면 토글 */}
+            <button
+              onClick={toggleCameraFacing}
+              type="button"
+              className="w-12 h-12 rounded-full bg-zinc-900 border border-zinc-850 flex items-center justify-center text-xl active:scale-95 transition-transform"
+              title="전/후면 카메라 전환"
+            >
+              🔄
+            </button>
+
+            {/* 찰칵 촬영 */}
+            <button
+              onClick={capturePhoto}
+              type="button"
+              className="w-20 h-20 rounded-full border-4 border-white bg-amber-400 flex items-center justify-center shadow-lg active:scale-90 transition-transform relative group"
+            >
+              <span className="absolute inset-2 rounded-full border-2 border-zinc-950 bg-white group-active:bg-amber-400 transition-colors"></span>
+            </button>
+
+            {/* 취소 */}
+            <button
+              onClick={stopCamera}
+              type="button"
+              className="w-12 h-12 rounded-full bg-zinc-900 border border-zinc-850 flex items-center justify-center text-xs font-bold text-red-500 active:scale-95 transition-transform"
+            >
+              취소
+            </button>
+          </div>
         </div>
       )}
     </div>
