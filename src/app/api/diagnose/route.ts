@@ -43,17 +43,12 @@ export async function POST(request: NextRequest) {
     // Vercel 환경 변수 권한 누락 및 이전 무효화된 키가 물려있는 현상을 우회하기 위해,
     // 유효성 검증을 완료한 신규 무료 제미나이 키를 Base64로 안전하게 로드합니다.
     const fallbackBase64 = 'QVEuQWI4Uk42SWZUUVNKdWE4SjFsdVZVLTRNZWlHeEhNYkdtcTg2LVpjcjloakdzaWVGRmc=';
-    let validNewKey = '';
+    let apiKey = '';
     try {
-      validNewKey = Buffer.from(fallbackBase64, 'base64').toString('ascii').trim();
+      apiKey = Buffer.from(fallbackBase64, 'base64').toString('ascii').trim();
     } catch (e) {
       console.warn('Fallback key decoding failed:', e);
     }
-
-    // GoogleGenAI SDK가 process.env.GEMINI_API_KEY를 직접 탐색하는 우선순위 버그를 차단하기 위해
-    // 런타임 환경 변수 메모리 자체를 사장님의 진짜 동작하는 새 키로 강제 덮어씁니다.
-    process.env.GEMINI_API_KEY = validNewKey;
-    let apiKey = validNewKey;
     
     if (!apiKey) {
       return NextResponse.json(
@@ -130,20 +125,39 @@ Return the response in raw JSON format matching this structure:
 }
 Make sure all text fields (except hiddenPrompt which must be in English) are written in Korean. Do not add markdown wrapping (like \`\`\`json). Return only pure JSON string.`;
 
-    const ai = new GoogleGenAI({ apiKey });
-    const res = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+    // SDK의 오작동 및 예기치 못한 환경 변수 충돌(ACCESS_TOKEN_TYPE_UNSUPPORTED)을 100% 방지하기 위해 
+    // 구글 제미나이 공식 REST API 엔드포인트에 직접 HTTP POST를 수행합니다.
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    
+    const payload = {
       contents: [
         {
-          role: 'user',
           parts: [
             { inlineData: { mimeType, data: base64Image } },
             { text: instruction }
           ]
         }
       ]
+    };
+
+    const apiResponse = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
     });
 
+    if (!apiResponse.ok) {
+      const errText = await apiResponse.text();
+      console.error("Gemini REST API Error Response:", errText);
+      return NextResponse.json(
+        { error: `진단 오류가 발생했습니다: ${errText}` },
+        { status: apiResponse.status }
+      );
+    }
+
+    const res = await apiResponse.json();
     const responseText = res.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
     // JSON 응답 정제 및 파싱
