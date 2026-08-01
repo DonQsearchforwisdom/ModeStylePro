@@ -32,12 +32,14 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
         streamRef.current.getTracks().forEach(track => track.stop());
       }
 
-      // 전후면 카메라 및 적절한 모바일 캡처 비디오 해상도 설정
+      // 모바일 기기의 램 부족 OOM 및 시스템 메모리 에러를 방지하기 위해 
+      // 모바일 환경일 때는 비디오 스트림의 해상도와 프레임레이트를 극도로 절약합니다.
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: cameraFacing,
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: isMobile ? { ideal: 640, max: 800 } : { ideal: 1280 },
+          height: isMobile ? { ideal: 480, max: 600 } : { ideal: 720 },
+          frameRate: isMobile ? { ideal: 15, max: 20 } : { ideal: 30 }
         },
         audio: false
       };
