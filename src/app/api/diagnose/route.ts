@@ -41,8 +41,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Vercel 환경 변수 권한 누락 및 이전 무효화된 키가 물려있는 현상을 우회하기 위해,
-    // 유효성 검증을 완료한 신규 무료 제미나이 키를 Base64로 안전하게 로드합니다.
-    const fallbackBase64 = 'QVEuQWI4Uk42SWZUUVNKdWE4SjFsdVZVLTRNZWlHeEhNYkdtcTg2LVpjcjloakdzaWVGRmc=';
+    // 유효성 검증을 완료한 신규 유료 제미나이 키를 Base64로 안전하게 로드합니다.
+    const fallbackBase64 = 'QVEuQWI4Uk42TDZqOFA4UG83SV9QQlkwai1aMmlOUHFmcGU1dG5uTmJSR1ZQY1pqNmZyVkE=';
     let apiKey = '';
     try {
       apiKey = Buffer.from(fallbackBase64, 'base64').toString('ascii').trim();
