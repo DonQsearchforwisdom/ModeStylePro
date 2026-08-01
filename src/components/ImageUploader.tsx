@@ -13,7 +13,6 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -51,8 +50,11 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
       return;
     }
 
-    // 리사이징 계산 헬퍼 함수 (고품질 화질 유지를 위해 최대 800px로 제한)
-    const getResizedDimensions = (srcWidth: number, srcHeight: number, maxDim = 800) => {
+    // 모바일 환경 OOM 예방을 위해 해상도 제한 이원화 (모바일 500px / PC 800px)
+    const targetMaxDim = isMobile ? 500 : 800;
+
+    // 리사이징 계산 헬퍼 함수
+    const getResizedDimensions = (srcWidth: number, srcHeight: number, maxDim = targetMaxDim) => {
       let width = srcWidth;
       let height = srcHeight;
       if (width > height) {
@@ -101,8 +103,8 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
 
     // OOM 방지를 위해 createImageBitmap 지원 시 디코더 레벨에서 즉시 다운샘플링 처리
     if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
-      // 이미지 디코딩 단계에서 800px로 제한하여 원본 비트맵 OOM 원천 차단
-      createImageBitmap(file, { resizeWidth: 800 })
+      // 이미지 디코딩 단계에서 타겟 크기(모바일 500px / PC 800px)로 제한하여 OOM 원천 차단
+      createImageBitmap(file, { resizeWidth: targetMaxDim })
         .then((bitmap) => {
           drawAndCallback(bitmap, bitmap.width, bitmap.height);
         })
@@ -162,7 +164,7 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
   };
 
   const triggerCameraInput = () => {
-    cameraInputRef.current?.click();
+    fileInputRef.current?.click();
   };
 
   return (
@@ -218,20 +220,12 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
               </>
             )}
           </div>
-          {/* 숨겨진 일반 파일 인풋 */}
+          {/* 숨겨진 일반 파일 인풋 (통합) */}
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/*"
-            className="hidden"
-          />
-          {/* 숨겨진 카메라 촬영 인풋 (OOM 방지를 위해 capture 속성 제거) */}
-          <input
-            type="file"
-            ref={cameraInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
+            accept="image/jpeg, image/png, image/webp"
             className="hidden"
           />
         </div>
@@ -247,21 +241,12 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
               : 'border-zinc-800 bg-zinc-900/30'
             }`}
         >
-          {/* 갤러리 파일 업로드용 인풋 */}
+          {/* 갤러리 파일 업로드용 인풋 (통합) */}
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/*"
-            className="hidden"
-          />
-
-          {/* 모바일 카메라 촬영용 인풋 (OOM 방지를 위해 capture 속성 제거) */}
-          <input
-            type="file"
-            ref={cameraInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
+            accept="image/jpeg, image/png, image/webp"
             className="hidden"
           />
 
