@@ -226,13 +226,12 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             accept="image/*"
             className="hidden"
           />
-          {/* 숨겨진 카메라 촬영 인풋 (정식 시스템 카메라 호출을 위해 복구) */}
+          {/* 숨겨진 카메라 촬영 인풋 (OOM 방지를 위해 capture 속성 제거) */}
           <input
             type="file"
             ref={cameraInputRef}
             onChange={handleFileChange}
             accept="image/*"
-            capture="environment"
             className="hidden"
           />
         </div>
@@ -257,13 +256,12 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
             className="hidden"
           />
 
-          {/* 모바일 카메라 촬영용 인풋 (capture 복구로 카메라 앱 권한 충돌 예방) */}
+          {/* 모바일 카메라 촬영용 인풋 (OOM 방지를 위해 capture 속성 제거) */}
           <input
             type="file"
             ref={cameraInputRef}
             onChange={handleFileChange}
             accept="image/*"
-            capture="environment"
             className="hidden"
           />
 
