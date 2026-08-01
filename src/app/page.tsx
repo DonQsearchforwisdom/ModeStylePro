@@ -362,6 +362,27 @@ export default function HomePage() {
 
   // 헤어 AI 진단 상태
   const [isDiagnosing, setIsDiagnosing] = useState<boolean>(false);
+  // 테스트용 히든 치트키 충전 상태 및 핸들러
+  const [cheatCount, setCheatCount] = useState<number>(0);
+  const handleCheatClick = () => {
+    setCheatCount((prev) => {
+      const next = prev + 1;
+      if (next >= 5) {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('credits_remaining', '999');
+          localStorage.setItem('total_plan_credits', '999');
+          localStorage.setItem('user_plan', '1회충전');
+          alert('🔮 테스트용 무제한 크레딧(999회)이 즉시 충전되었습니다!');
+          location.reload();
+        }
+        return 0;
+      }
+      return next;
+    });
+  };
+
+  // 통합 크레딧 및 플랜 상태 관리 (비회원 기기 인증 기반)
+  // 중복 제거를 위해 주석 처리: const [userPlan, setUserPlan] = useState<'무료체험' | '1회충전' | '라이트' | '살롱'>('무료체험');
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
 
@@ -2233,7 +2254,12 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
 
           <div className="flex items-center gap-4 text-zinc-500">
-            <span>© 2026 {salonName}. All rights reserved. Powered by ModeStyle Pro</span>
+            <span
+              onClick={handleCheatClick}
+              className="cursor-pointer select-none active:text-amber-400"
+            >
+              © 2026 {salonName}. All rights reserved. Powered by ModeStyle Pro
+            </span>
           </div>
 
           <div
