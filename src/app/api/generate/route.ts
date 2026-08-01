@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 
@@ -30,7 +29,7 @@ const LOCAL_IMAGE_MAP: Record<string, Record<string, string>> = {
   }
 };
 
-// 로컬 이미지 획득 헬퍼 함수 (API 키가 없거나 Quota 초과 시 데모 안정성을 위한 fallback 제공)
+// 로컬 이미지 획득 헬퍼 함수
 function getLocalFallbackImage(gender: string, hairStyle: string): string | null {
   const genderMap = LOCAL_IMAGE_MAP[gender];
   if (genderMap) {
@@ -53,15 +52,7 @@ function getLocalFallbackImage(gender: string, hairStyle: string): string | null
   return null;
 }
 
-// IP별 데모 생성 횟수 제한을 관리할 인메모리 맵
-// Vercel Serverless 환경에서는 인스턴스가 다운되면 리셋될 수 있으나 간이 Rate Limiter로 작동합니다.
-interface LimiterData {
-  count: number;
-  date: string;
-}
-const ipLimitMap = new Map<string, LimiterData>();
-
-// 바디 용량 확인 함수 (~8MB 제한)
+// 바디 용량 확인 함수
 function getByteLength(str: string): number {
   return Buffer.byteLength(str, 'utf8');
 }
@@ -73,7 +64,7 @@ export async function POST(request: NextRequest) {
     const cloneReq = request.clone();
     const rawBody = await cloneReq.text();
     
-    // ~8MB 제한 검사 (8 * 1024 * 1024 = 8,388,608 bytes)
+    // ~8MB 제한 검사
     const bodySize = getByteLength(rawBody);
     if (bodySize > 8.3 * 1024 * 1024) {
       return NextResponse.json(
@@ -94,49 +85,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 서버 환경변수에서 API 키 획득
-    const apiKey = process.env.GEMINI_API_KEY || '';
+    // 서버 환경변수에서 Stability AI API 키 획득
+    const apiKey = process.env.STABILITY_API_KEY || '';
     
+    // 키가 설정되지 않았다면 로컬 Fallback 이미지 적용 (데모 비용 0원 보호 정책)
     if (!apiKey) {
       const fallbackImage = getLocalFallbackImage(gender, hairStyle);
       if (fallbackImage) {
         return NextResponse.json({ image: fallbackImage });
       }
       return NextResponse.json(
-        { error: '서버 AI 서비스 키가 설정되지 않았습니다. 관리자에게 문의해 주세요.' },
+        { error: '서버 AI 서비스 키(STABILITY_API_KEY)가 설정되지 않았습니다. .env.local을 확인해 주세요.' },
         { status: 500 }
       );
     }
 
-    // IP 제한 검증 (하루 10회 방어 제한 - 개발 테스트를 위해 비활성화)
-    /*
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || request.headers.get('x-real-ip') || 'unknown-ip';
-    const today = new Date().toISOString().split('T')[0];
-
-    const limitInfo = ipLimitMap.get(ip);
-
-    if (limitInfo) {
-      if (limitInfo.date === today) {
-        if (limitInfo.count >= 10) {
-          return NextResponse.json(
-            { error: '오늘 일일 무료 시뮬레이션 제한(10회)을 초과했습니다. 내일 다시 시도해 주세요.' },
-            { status: 429 }
-          );
-        }
-        limitInfo.count += 1;
-      } else {
-        // 날짜가 바뀐 경우 초기화
-        limitInfo.date = today;
-        limitInfo.count = 1;
-      }
-      ipLimitMap.set(ip, limitInfo);
-    } else {
-      ipLimitMap.set(ip, { count: 1, date: today });
-    }
-    */
-
-    // base64 이미지 디코딩 및 mimeType 추출
-    // 예: "data:image/png;base64,iVBOR..." -> mimeType: "image/png", base64Image: "iVBOR..."
+    // base64 이미지 디코딩
     const match = image.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
     let mimeType = 'image/jpeg';
     let base64Image = image;
@@ -146,56 +110,69 @@ export async function POST(request: NextRequest) {
       base64Image = match[2];
     }
 
-    // 영문 프롬프트 변환 매핑
-    const englishGender = gender === '남성' ? 'male' : 'female';
-    
-    // 프롬프트 작성 - customPrompt 분기 및 수동 선택 시 메이크업/디자인 개선 템플릿 적용
+    // 프롬프트 가이드 보강 (동양인 헤어 텍스처 및 정밀 조명 튜닝)
     let instruction = '';
     if (customPrompt) {
       instruction = customPrompt;
     } else {
       const isMale = gender === '남성';
       if (isMale) {
-        instruction = `Redesign the hair of the male in this photo to a ${hairLength} ${hairStyle} style. Keep the original face, facial features, clothing, background, and camera perspective exactly the same. Replace ONLY the hair to match the target style cleanly and naturally with a high-end salon finish, professional styling, refined hair line, natural volume, and healthy hair texture. Apply clean, subtle male grooming to the face (flawless clear skin, natural defined eyebrows, neat look, and natural lip balm) to make the overall appearance more handsome, polished, and ideal, perfectly matching the ${hairStyle} hairstyle. Photorealistic, professional studio lighting, 8k resolution, clear details.`;
+        instruction = `Redesign the hair of the Asian male in this photo to a ${hairLength} ${hairStyle} hairstyle. Keep the original face, facial features, clothing, background, and camera perspective exactly the same. Replace ONLY the hair to match the target style cleanly and naturally with a high-end Korean salon finish, natural volume, and healthy hair texture. K-beauty style, flawless skin, natural defined eyebrows, neat look. Photorealistic, professional studio lighting, 8k resolution, clear details.`;
       } else {
-        instruction = `Redesign the hair of the female in this photo to a ${hairLength} ${hairStyle} style. Keep the original face, facial features, clothing, background, and camera perspective exactly the same. Replace ONLY the hair to match the target style with elegant salon hair design, beautiful healthy hair shine (angel ring), perfect volume, and natural flowing textures. Naturally apply a sophisticated, matching makeup style (flawless radiant skin, soft eyeliner, nicely shaped eyebrows, and lovely lip color such as soft rose or warm coral that fits the hair tone) to enhance her overall beauty and present the most ideal, stylish appearance that harmonizes with the ${hairStyle} hairstyle. Photorealistic, professional studio lighting, 8k resolution, clear details.`;
+        instruction = `Redesign the hair of the Asian female in this photo to a ${hairLength} ${hairStyle} hairstyle. Keep the original face, facial features, clothing, background, and camera perspective exactly the same. Replace ONLY the hair to match the target style with elegant Korean salon hair design, beautiful healthy hair shine, perfect volume, and natural flowing textures. flawless radiant skin, soft eyeliner, lovely lip color that fits the hair tone. Photorealistic, professional studio lighting, 8k resolution, clear details.`;
       }
     }
 
-    // Gemini API 호출
-    const ai = new GoogleGenAI({ apiKey });
-    const res = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-image-preview',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { inlineData: { mimeType, data: base64Image } },
-            { text: instruction }
-          ]
-        }
-      ]
-    });
+    // Stability AI Multipart Form Data 구성
+    const formData = new FormData();
+    const buffer = Buffer.from(base64Image, 'base64');
+    const blob = new Blob([buffer], { type: mimeType });
+    
+    formData.append('init_image', blob, `image.${mimeType.split('/')[1] || 'jpeg'}`);
+    formData.append('init_image_mode', 'IMAGE_STRENGTH');
+    // 얼굴 형태 및 이목구비를 완벽히 유지하기 위해 0.65 수준으로 강하게 바인딩 튜닝
+    formData.append('image_strength', '0.65');
+    
+    // 긍정 프롬프트
+    formData.append('text_prompts[0][text]', instruction);
+    formData.append('text_prompts[0][weight]', '1.0');
+    // 부정 프롬프트 (서양인 왜곡 및 이목구비 찌그러짐 원천 차단)
+    formData.append('text_prompts[1][text]', 'distorted face, blurry face, different person, ugly, bad anatomy, deformed eyes, different clothing, different background, low quality');
+    formData.append('text_prompts[1][weight]', '-1.0');
 
-    // 응답에서 인라인 이미지 데이터 추출
-    const part = res.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-    const imageBase64 = part?.inlineData?.data;
+    // Stability AI API 호출 (SDXL Image-to-Image 엔드포인트)
+    const response = await fetch(
+      'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/image-to-image',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        },
+        body: formData,
+      }
+    );
 
-    if (!imageBase64) {
-      // 이미지 생성이 차단되었거나 실패한 경우
-      return NextResponse.json(
-        { error: 'AI 이미지 생성에 실패했거나 부적절한 컨텐츠(예: 얼굴 미인식, 유해 이미지 우려)로 인해 차단되었습니다. 다른 사진으로 시도해 주세요.' },
-        { status: 422 }
-      );
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Stability AI Response Error:', errorText);
+      throw new Error(`Stability API HTTP ${response.status}: ${errorText}`);
     }
 
-    // 결과 base64 이미지 리턴
+    const responseJSON = await response.json();
+    const generatedImageBase64 = responseJSON.artifacts?.[0]?.base64;
+
+    if (!generatedImageBase64) {
+      throw new Error('Stability AI did not return base64 image data.');
+    }
+
+    // 결과 이미지 리턴 (기본 png 반환)
     return NextResponse.json({
-      image: `data:${part?.inlineData?.mimeType || 'image/png'};base64,${imageBase64}`
+      image: `data:image/png;base64,${generatedImageBase64}`
     });
 
   } catch (error: any) {
-    console.error('Gemini API Error:', error);
+    console.error('Stability API Error:', error);
     
     // 에러 발생 시 최후의 수단으로 로컬 이미지 fallback 반환 시도
     const fallbackImage = getLocalFallbackImage(gender, hairStyle);
@@ -207,18 +184,18 @@ export async function POST(request: NextRequest) {
     const errorMessage = error?.message || '';
     
     // API 키가 유효하지 않은 경우 처리
-    if (errorMessage.includes('API key not valid') || errorMessage.includes('invalid api key')) {
+    if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
       return NextResponse.json(
-        { error: '입력하신 Gemini API 키가 유효하지 않습니다. AI Studio에서 발급받은 올바른 키인지 확인해 주세요.' },
+        { error: '입력하신 Stability AI API 키가 유효하지 않습니다. platform.stability.ai에서 올바른 키를 생성했는지 확인해 주세요.' },
         { status: 401 }
       );
     }
 
-    // 할당량 초과 처리 (Rate Limit / Quota Exceeded)
-    if (errorMessage.includes('Quota exceeded') || errorMessage.includes('429') || errorMessage.includes('limit')) {
+    // 크레딧 부족 등 제한 처리
+    if (errorMessage.includes('402') || errorMessage.includes('Payment Required') || errorMessage.includes('credit')) {
       return NextResponse.json(
-        { error: 'Gemini API의 일일/분당 사용 한도(Quota Exceeded)를 초과했습니다. 약 1분 뒤에 다시 시도하시거나, 결제 정보가 연동된 다른 API 키를 사용해 주세요.' },
-        { status: 429 }
+        { error: 'Stability AI API 크레딧이 부족합니다. 계정에 크레딧을 추가하시거나 로컬 데모 모드를 확인해 주세요.' },
+        { status: 402 }
       );
     }
 

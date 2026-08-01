@@ -120,7 +120,7 @@ Make sure all text fields (except hiddenPrompt which must be in English) are wri
 
     const ai = new GoogleGenAI({ apiKey });
     const res = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-image-preview',
+      model: 'gemini-1.5-flash',
       contents: [
         {
           role: 'user',
