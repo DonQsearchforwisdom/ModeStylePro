@@ -17,6 +17,7 @@ function getByteLength(str: string): number {
 }
 
 export async function POST(request: NextRequest) {
+  let gender: '여성' | '남성' = '여성';
   try {
     const cloneReq = request.clone();
     const rawBody = await cloneReq.text();
@@ -31,11 +32,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = JSON.parse(rawBody);
-    const { image, gender } = body;
+    gender = body.gender === '남성' ? '남성' : '여성';
+    const { image } = body;
 
-    if (!image || !gender) {
+    if (!image) {
       return NextResponse.json(
-        { error: '필수 데이터(이미지, 성별)가 누락되었습니다.' },
+        { error: '필수 데이터(이미지)가 누락되었습니다.' },
         { status: 400 }
       );
     }
