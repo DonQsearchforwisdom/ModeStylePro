@@ -378,6 +378,12 @@ export default function HomePage() {
   const [sharingReportResult, setSharingReportResult] = useState<SimulationResult | null>(null);
   const [isCopiedReport, setIsCopiedReport] = useState<boolean>(false);
 
+  // 전체 스타일 통합 제안서 공유 모달 상태
+  const [showCombinedReportModal, setShowCombinedReportModal] = useState<boolean>(false);
+  const [isCopiedCombinedReport, setIsCopiedCombinedReport] = useState<boolean>(false);
+  const [combinedReportImage, setCombinedReportImage] = useState<string | null>(null);
+  const [isGeneratingCombinedImage, setIsGeneratingCombinedImage] = useState<boolean>(false);
+
   // 헤어 AI 진단 상태
   const [isDiagnosing, setIsDiagnosing] = useState<boolean>(false);
   // 테스트용 히든 치트키 충전 상태 및 핸들러
@@ -1330,6 +1336,200 @@ export default function HomePage() {
     } else {
       handleCopyReportText(text);
     }
+  };
+
+  // 전체 스타일 종합 제안서 캔버스 이미지 생성기 (Before 1장 + After 3~4장 + 코디 비교표 합성)
+  const generateCombinedReportCanvasImage = async (): Promise<string | null> => {
+    if (!originalImage || resultsList.length === 0) return null;
+    setIsGeneratingCombinedImage(true);
+
+    try {
+      // 이미지 로드 헬퍼
+      const loadImage = (src: string): Promise<HTMLImageElement> => {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          if (src.startsWith('http')) {
+            img.crossOrigin = 'anonymous';
+          }
+          img.onload = () => resolve(img);
+          img.onerror = (e) => reject(e);
+          img.src = src;
+        });
+      };
+
+      const beforeImg = await loadImage(originalImage);
+      const afterItems = resultsList.slice(0, 3);
+      const afterImgs = await Promise.all(afterItems.map((item) => loadImage(item.afterImage)));
+
+      // 캔버스 크기 계산 (1200px 기준 고화질)
+      const canvas = document.createElement('canvas');
+      const totalCards = 1 + afterItems.length; // Before 1개 + After 최대 3개 (총 2~4개)
+      const cols = totalCards <= 2 ? 2 : totalCards === 3 ? 3 : 2;
+      const rows = totalCards <= 3 ? 1 : 2;
+
+      const cardWidth = 540;
+      const cardHeight = 540;
+      const gap = 30;
+      const padding = 50;
+      const headerHeight = 180;
+      const footerHeight = 240;
+
+      canvas.width = padding * 2 + cols * cardWidth + (cols - 1) * gap;
+      canvas.height = headerHeight + rows * (cardHeight + 90) + footerHeight + padding * 2;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      // 1. 다크 프리미엄 배경 채우기
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      bgGrad.addColorStop(0, '#09090b');
+      bgGrad.addColorStop(0.5, '#121215');
+      bgGrad.addColorStop(1, '#09090b');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 테두리 골드 라인
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(15, 15, canvas.width - 30, canvas.height - 30);
+
+      // 2. 상단 헤더 텍스트
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`✨ ${salonName || 'ModeStyle Pro'} 헤어 & 패션 종합 스타일링 리포트`, canvas.width / 2, padding + 55);
+
+      ctx.fillStyle = '#a1a1aa';
+      ctx.font = '20px sans-serif';
+      const todayStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+      ctx.fillText(`담당: ${designerName || '지오 디자이너'}  |  컨설팅 일자: ${todayStr}`, canvas.width / 2, padding + 95);
+
+      ctx.strokeStyle = '#27272a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padding, headerHeight);
+      ctx.lineTo(canvas.width - padding, headerHeight);
+      ctx.stroke();
+
+      // 3. 카드 렌더링 (Before + After 스타일들)
+      const allCards = [
+        {
+          title: '📷 BEFORE (현재 스타일)',
+          outfit: '현재 본연의 헤어 & 스타일링 상태',
+          img: beforeImg,
+          badgeColor: '#71717a'
+        },
+        ...afterItems.map((res, i) => ({
+          title: `✨ 추천 ${i + 1}: ${res.styleName}`,
+          outfit: `👗 ${res.recommendedOutfit || '헤어 맞춤 모던 코디'}`,
+          img: afterImgs[i],
+          badgeColor: '#f59e0b'
+        }))
+      ];
+
+      for (let i = 0; i < allCards.length; i++) {
+        const card = allCards[i];
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        const x = padding + c * (cardWidth + gap);
+        const y = headerHeight + 30 + r * (cardHeight + 90);
+
+        // 카드 테두리 배경
+        ctx.fillStyle = '#18181b';
+        ctx.strokeStyle = '#27272a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(x, y, cardWidth, cardHeight, 16);
+        ctx.fill();
+        ctx.stroke();
+
+        // 이미지 클리핑 & 그리기
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(x + 10, y + 10, cardWidth - 20, cardHeight - 20, 12);
+        ctx.clip();
+        ctx.drawImage(card.img, x + 10, y + 10, cardWidth - 20, cardHeight - 20);
+        ctx.restore();
+
+        // 스타일 타이틀 배지
+        ctx.fillStyle = '#09090b';
+        ctx.beginPath();
+        ctx.roundRect(x, y + cardHeight + 8, cardWidth, 40, 10);
+        ctx.fill();
+
+        ctx.fillStyle = card.badgeColor;
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(card.title, x + 15, y + cardHeight + 35);
+
+        // 추천 코디 배지
+        ctx.fillStyle = '#e4e4e7';
+        ctx.font = '16px sans-serif';
+        ctx.fillText(card.outfit, x + 15, y + cardHeight + 68);
+      }
+
+      // 4. 하단 요약 및 살롱 안내 푸터
+      const footerY = canvas.height - footerHeight + 20;
+      ctx.strokeStyle = '#27272a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padding, footerY);
+      ctx.lineTo(canvas.width - padding, footerY);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`📋 고객님만의 시그니처 룩을 위한 프리미엄 맞춤 제안입니다`, canvas.width / 2, footerY + 50);
+
+      ctx.fillStyle = '#d4d4d8';
+      ctx.font = '18px sans-serif';
+      ctx.fillText(`📍 예약 및 스타일 상담 문의: ${salonName || 'ModeStyle Pro 살롱'} (${designerName || '지오 디자이너'})`, canvas.width / 2, footerY + 90);
+
+      ctx.fillStyle = '#71717a';
+      ctx.font = '14px sans-serif';
+      ctx.fillText(`Generated by ModeStyle Pro AI Consulting Solution  |  ${todayStr}`, canvas.width / 2, footerY + 130);
+
+      const combinedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      setCombinedReportImage(combinedDataUrl);
+      return combinedDataUrl;
+    } catch (err) {
+      console.error('Failed to generate combined report image:', err);
+      return null;
+    } finally {
+      setIsGeneratingCombinedImage(false);
+    }
+  };
+
+  // 전체 스타일 종합 제안서 모달 열기 핸들러
+  const handleOpenCombinedReport = () => {
+    setShowCombinedReportModal(true);
+    generateCombinedReportCanvasImage();
+  };
+
+  // 종합 리포트 텍스트 복사 핸들러
+  const handleCopyCombinedReportText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setIsCopiedCombinedReport(true);
+      setTimeout(() => setIsCopiedCombinedReport(false), 3000);
+    } catch (e) {
+      alert(text);
+    }
+  };
+
+  // 종합 리포트 이미지 다운로드
+  const handleDownloadCombinedImage = () => {
+    if (!combinedReportImage) {
+      alert('종합 리포트 이미지를 생성하는 중입니다. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = combinedReportImage;
+    link.download = `ModeStylePro_전체스타일_종합제안서_${Date.now()}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // 개별 결과 삭제
@@ -2308,7 +2508,7 @@ export default function HomePage() {
         {/* 3. SIMULATION RESULT SECTION (최신순 결과 히스토리 누적 및 스타일별 가변 옵션화) */}
         {resultsList.length > 0 && originalImage && (
           <section id="simulation-results-container" className="space-y-6 scroll-mt-24">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-zinc-800">
               <div>
                 <h3 className="text-xl md:text-2xl font-extrabold text-white flex items-center gap-2">
                   <span>📂</span> 헤어 제안서 리포트 보관함
@@ -2317,10 +2517,18 @@ export default function HomePage() {
                   생성된 헤어 시뮬레이션 결과가 자동으로 저장됩니다. 아래 목록에서 원하는 제안서를 클릭해 상세 리포트를 확인하세요.
                 </p>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="text-xs bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-300">
-                  🗂️ 총 <strong className="text-amber-400">{resultsList.length}개</strong>의 제안서 보관 중
-                </span>
+              <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleOpenCombinedReport}
+                  className="gold-bg-gradient hover:opacity-95 text-zinc-950 font-extrabold px-4 py-2.5 rounded-xl shadow-lg shadow-amber-400/20 flex items-center gap-2 text-xs sm:text-sm active:scale-[0.98] transition-all"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>📑 전체 스타일 종합 제안서 한 번에 공유하기</span>
+                  <span className="bg-zinc-950 text-amber-400 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                    {resultsList.length}개 스타일
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -2832,6 +3040,185 @@ ${sharingReportResult.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨
                     >
                       <Download className="w-3.5 h-3.5 text-amber-400" />
                       <span>제안서 완성 이미지 파일 저장</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* 5. 📑 전체 스타일 종합 제안서 일괄 공유 전용 모달 (Combined All-in-One Report Modal) */}
+      {showCombinedReportModal && (
+        <div className="fixed inset-0 z-[999] bg-zinc-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+          <div className="glass-panel w-full max-w-2xl rounded-3xl border border-zinc-700 shadow-2xl p-5 sm:p-7 space-y-5 animate-in fade-in zoom-in-95 duration-200 relative max-h-[92vh] overflow-y-auto">
+            {/* 닫기 버튼 */}
+            <button
+              onClick={() => setShowCombinedReportModal(false)}
+              type="button"
+              className="absolute top-5 right-5 text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors z-10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* 헤더 */}
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl gold-bg-gradient flex items-center justify-center text-zinc-950 font-bold text-xl shrink-0 shadow-lg shadow-amber-400/20">
+                📑
+              </div>
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                  <span>헤어 & 패션 토탈 종합 제안서</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 font-mono">
+                    총 {resultsList.length}개 스타일 룩
+                  </span>
+                </h3>
+                <p className="text-xs text-zinc-400">
+                  {salonName || 'ModeStyle Pro'} • {designerName || '지오 디자이너'}
+                </p>
+              </div>
+            </div>
+
+            {/* 1. 종합 합성 리포트 이미지 미리보기 영역 */}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  <span>📸</span> 종합 스타일링 포트폴리오 이미지 (Before + After 비교)
+                </span>
+                {isGeneratingCombinedImage && (
+                  <span className="text-[11px] text-zinc-400 animate-pulse">
+                    ⚡ 고화질 합성 렌더링 중...
+                  </span>
+                )}
+              </div>
+
+              {combinedReportImage ? (
+                <div className="relative rounded-xl overflow-hidden border border-zinc-750 max-h-72 flex items-center justify-center bg-black/60 group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={combinedReportImage}
+                    alt="종합 스타일링 리포트"
+                    className="max-h-72 w-auto object-contain rounded-lg"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={handleDownloadCombinedImage}
+                      className="bg-amber-400 text-zinc-950 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>고화질 이미지로 저장하기</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-12 text-center text-zinc-500 text-xs flex flex-col items-center gap-2">
+                  <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  <span>전체 제안서 이미지를 합성하고 있습니다...</span>
+                </div>
+              )}
+            </div>
+
+            {/* 2. 전체 제안서 텍스트 영역 */}
+            {(() => {
+              const combinedText = `[${salonName || 'ModeStyle Pro'} 헤어 & 패션 종합 스타일링 제안서]
+담당 디자이너: ${designerName || '지오 디자이너'}
+고객 맞춤 종합 컨설팅 리포트 (${resultsList.length}가지 추천 스타일)
+
+━━━━━━━━━━━━━━━━━━━━
+${resultsList.map((res, idx) => `
+✨ [스타일 ${idx + 1}] ${res.gender} ${res.length} ‘${res.styleName}’
+👗 추천 의상 코디 (Fashion Styling):
+${res.recommendedOutfit || '헤어에 어울리는 트렌디 모던 룩'}
+
+📋 추천 시술 옵션:
+• 기본 시술: ${res.styleName} 헤어 디자인
+• ${res.careOption} (${res.careCost})
+• ${res.designOption} (${res.designCost})
+${res.upsell ? `• ${res.upsell}` : ''}
+
+🧴 홈 스타일링 & 드라이 가이드:
+${res.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨을 살려 손질해 주세요.'}
+`).join('\n────────────────────\n')}
+━━━━━━━━━━━━━━━━━━━━
+
+📍 상담 및 예약 문의: ${salonName || 'ModeStyle Pro 헤어 살롱'}`;
+
+              return (
+                <div className="space-y-4">
+                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs text-zinc-400 font-bold pb-1 border-b border-zinc-850">
+                      <span>📄 종합 리포트 전문</span>
+                      {isCopiedCombinedReport && (
+                        <span className="text-amber-400 flex items-center gap-1 font-bold animate-in fade-in">
+                          <Check className="w-3.5 h-3.5" /> 복사 완료!
+                        </span>
+                      )}
+                    </div>
+                    <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-40 overflow-y-auto pr-1">
+                      {combinedText}
+                    </pre>
+                  </div>
+
+                  {/* 액션 버튼 그룹 */}
+                  <div className="space-y-2.5 pt-1">
+                    {/* 1. 종합 리포트 이미지 다운로드 (한 장으로 모아 저장) */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadCombinedImage}
+                      disabled={!combinedReportImage}
+                      className="w-full py-3.5 px-4 rounded-xl gold-bg-gradient text-zinc-950 font-extrabold text-xs md:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 hover:opacity-95 active:scale-[0.98] transition-all disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>📸 전체 스타일 종합 이미지 한 장으로 다운로드 (Before + After + 코디)</span>
+                    </button>
+
+                    {/* 2. 텍스트 리포트 복사 */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyCombinedReportText(combinedText)}
+                      className={`w-full py-3 px-4 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] border ${
+                        isCopiedCombinedReport
+                          ? 'bg-emerald-500 text-white border-emerald-400 shadow-emerald-500/20'
+                          : 'bg-zinc-900 hover:bg-zinc-850 border-zinc-750 text-zinc-200'
+                      }`}
+                    >
+                      {isCopiedCombinedReport ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>복사 완료! (카카오톡/문자에 바로 붙여넣기 하세요)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="w-4 h-4 text-amber-400" />
+                          <span>📋 전체 리포트 텍스트 복사하기 (카카오톡/문자 전송용)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* 3. 모바일 네이티브 공유 */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (typeof navigator !== 'undefined' && navigator.share) {
+                          try {
+                            await navigator.share({
+                              title: `${salonName || 'ModeStyle Pro'} 헤어&패션 종합 제안서`,
+                              text: combinedText
+                            });
+                          } catch (err: any) {
+                            if (err.name !== 'AbortError') {
+                              handleCopyCombinedReportText(combinedText);
+                            }
+                          }
+                        } else {
+                          handleCopyCombinedReportText(combinedText);
+                        }
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all"
+                    >
+                      <span>💬 모바일 SNS / 메시지 앱으로 전체 공유하기</span>
                     </button>
                   </div>
                 </div>
