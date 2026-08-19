@@ -1,39 +1,117 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { STYLE_OPTIONS } from '@/data/styleOptions';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// 로컬 이미지 파일 매핑 테이블
+// 로컬 이미지 파일 매핑 테이블 (프리셋 fallback)
 const LOCAL_IMAGE_MAP: Record<string, Record<string, string>> = {
   여성: {
-    '레이어드 C컬펌': 'f_레이어드C컬펌.png',
-    '발레아쥬 옴브레': 'f_발레아쥬 옴브레.png',
-    '태슬컷 & 슬릭펌': 'f_태슬컷n슬릭펌.png',
-    '복구 클리닉 볼륨매직': 'f_복구클리닉 볼륨매직.png',
-    '내추럴 히피/물결펌': 'f_내출럴히피 물결펌.png',
-    '애쉬 바이올렛 톤다운': 'f_애쉬 바이올렛 톤다운.png',
-    '숏재킷 & 리프컷': 'f_숏재킷 리프컷.png',
-    '빌드/엘리자벳 디자이너 펌': 'f_빌드 엘리자벳 디자이너펌.png',
+    '레이어드 C컬펌': 'kr_medium_c_curl.jpg',
+    '그레이스펌 (여신 웨이브)': 'east_female_long_grace.png',
+    '태슬컷 (슬릭 단발)': 'kr_bob_tassel.jpg',
+    '태슬컷 & 슬릭펌': 'kr_bob_tassel.jpg',
+    '모즈펌 (단발 C컬)': 'kr_bob_mods.jpg',
+    '보니펌 (C컬 볼륨 단발)': 'kr_bob_bonnie.jpg',
+    '단발 스트레이트': 'kr_bob_straight.jpg',
+    '숏 리프컷': 'kr_short_leaf.jpg',
+    '숏 볼륨매직 & 픽시컷': 'kr_short_volume.jpg',
+    '픽시 스트레이트컷': 'kr_short_straight.jpg',
+    '엘리자벳 빌드펌': 'kr_medium_build.jpg',
+    '소프트 레이어드 C컬펌': 'kr_medium_c_curl.jpg',
+    '윈드펌 (허쉬 C컬)': 'kr_medium_wind.jpg',
+    '결개선 볼륨매직': 'kr_medium_straight.jpg',
+    '내추럴 히피펌 / 물결펌': 'east_female_semilong_straight.png',
+    '세미롱 레이어드 S컬펌': 'east_female_semilong_s_curl.png',
+    '허쉬 레이어드 믹스펌': 'e_female_wind_hush.png',
   },
   남성: {
-    '쉐도우 애즈펌': 'm_쉐도우애즈펌.png',
-    '시스루 댄디컷': 'm_댄디컷.png',
-    '리프컷 & 전체 다운펌': 'm_리프컷다운펌.png',
-    '아이롱 가르마 포마드': 'm_아이롱가르마포마드.png',
-    '드롭컷 & 가일 스타일': 'm_드롭컷가일스타일.png',
-    '스핀스왈로 / 쉐도우 믹스': 'm_스핀스왈로.png',
-    '플래티넘 애쉬 탈색': 'm_플래티넘애쉬탈색.png',
-    '볼륨매직 & 구구다운': 'm_볼륨매직구구다운.png',
+    '아이비리그컷': 'kr_male_ivy_league.png',
+    '드롭컷': 'kr_male_drop_cut.png',
+    '플랫컷': 'kr_male_flat_cut.png',
+    '파일컷': 'kr_male_file_cut.png',
+    '리젠트컷': 'kr_male_regent_cut.png',
+    '시스루 댄디컷': 'kr_male_see_through_dandy.png',
+    '가일컷': 'kr_male_guile_cut.png',
+    '투블럭 댄디 + 다운펌': 'kr_male_twoblock_dandy.png',
+    '애즈펌 / 시스루 애즈펌': 'kr_male_as_perm.png',
+    '쉐도우펌': 'kr_male_shadow_perm.png',
+    '가르마펌': 'kr_male_garma_perm.png',
+    '세미 리프컷': 'kr_male_semi_leaf_cut.png',
+    '롱 리프펌': 'kr_male_long_leaf_perm.png',
+    '울프컷 (모던 머릿)': 'kr_male_wolf_cut.png',
+    '맨번': 'kr_male_man_bun.png',
   }
 };
 
+// 각 스타일별 정밀 영문 디렉션 맵 (AI가 길이나 형태를 오해하지 않도록 명확한 물리적 특성 정의)
+const STYLE_PROMPT_DETAILS: Record<string, string> = {
+  // 남성 숏 (Short)
+  '아이비리그컷': 'Cut the hair VERY SHORT into a crisp, clean Korean Ivy League crew cut. The forehead must be completely exposed and bare with NO bangs. The short front fringe is styled standing upright with textured volume. The sides, temples, and back are closely cropped and flattened with a neat down perm. Remove all long hair and bangs completely.',
+  '드롭컷': 'Short Korean drop cut where the center fringe is raised slightly above the forehead while the side corners of the bangs drop down cleanly towards the temples, creating a modern drop silhouette. Cropped neat sides.',
+  '플랫컷': 'Very short flat cut with a sharp horizontal flat top silhouette and cropped tapered sides. Front is clean and structured.',
+  '파일컷': 'Short sharp file cut with edgy spiky textured fringe standing upright, short textured top and high clean fade.',
+  '리젠트컷': 'Short classic regent cut with front fringe swept backwards and up, exposing forehead with dandy volume, neat sideburns.',
+
+  // 남성 미디움 숏 (Medium-Short)
+  '시스루 댄디컷': 'Medium-short see-through dandy cut. Airy textured light bangs resting gently on the eyebrow line with visible forehead gaps, neat straight flow, slim down-permed sides.',
+  '가일컷': 'Medium-short guile cut. One side of the fringe is swept cleanly back exposing part of the forehead, while the other side drops down with a subtle comma-curve.',
+  '투블럭 댄디 + 다운펌': 'Two-block dandy cut with slim down-permed sides and neat layered volume on top.',
+
+  // 남성 미디움 (Medium)
+  '애즈펌 / 시스루 애즈펌': 'Medium length soft wavy as perm with gentle center-part fringe revealing part of forehead, natural C-curl volume.',
+  '쉐도우펌': 'Medium length textured shadow perm with rich soft S-curls providing full shadow volume and depth.',
+  '가르마펌': 'Medium length classic 6:4 parted garma perm with soft sweeping curves framing the face.',
+
+  // 남성 롱 / 특수 (Long/Special)
+  '세미 리프컷': 'Semi-long leaf cut with flowy leaf-shaped hair sweeping back gracefully past the ears and neck.',
+  '롱 리프펌': 'Long flowy leaf perm reaching past the jawline with rich textured wavy curls.',
+  '맨번': 'Authentic full long hair man bun (classic long hair tied back). All hair is grown long all around without any shaved undercut or fade. The long natural side hair and front hair are smoothly gathered and swept back into a neat stylish bun at the back/crown of the head, with natural flowing texture and soft sideburn flow.',
+
+  // 여성 대표 스타일
+  '태슬컷 (슬릭 단발)': 'Sleek blunt tassel bob cut with sharp straight horizontal ends and glossy texture.',
+  '태슬컷 & 슬릭펌': 'Sleek blunt tassel bob cut with glossy straight texture.',
+  '모즈펌 (단발 C컬)': 'Classic Korean mods perm bob with voluminous inward C-curls hugging the jawline.',
+  '보니펌 (C컬 볼륨 단발)': 'Bonnie bob perm with rich rounded C-curl volume and soft airy texture.',
+  '숏 리프컷': 'Short feminine leaf cut with soft tapered nape and side bangs tucked behind ears.',
+  '엘리자벳 빌드펌': 'Medium-length Elizabeth build perm with voluminous outward S-C curl flow framing the collarbone.',
+  '소프트 레이어드 C컬펌': 'Medium layered hair with natural bouncy inward C-curls.',
+  '윈드펌 (허쉬 C컬)': 'Feathered wind perm with airy light layers and flipped C-curl ends.',
+  '그레이스펌 (여신 웨이브)': 'Long luxurious Grace perm with large bouncy cascading goddess waves.',
+  '내추럴 히피펌 / 물결펌': 'Long full-bodied hippie perm with defined continuous mermaid waves from roots to ends.',
+  '세미롱 레이어드 S컬펌': 'Semi-long layered hair with dynamic textured S-curl waves.',
+  '허쉬 레이어드 믹스펌': 'Edgy hush layered mix perm with airy textured feathered ends.',
+};
+
 // 로컬 이미지 획득 헬퍼 함수
-function getLocalFallbackImage(gender: string, hairStyle: string): string | null {
+function getLocalFallbackImage(gender: string, hairStyle: string, hairLength?: string): string | null {
   const genderMap = LOCAL_IMAGE_MAP[gender];
   if (genderMap) {
-    const fileName = genderMap[hairStyle];
+    // 1. 정확한 스타일명 매칭
+    let fileName = genderMap[hairStyle];
+    
+    // 2. 부분 일치 매칭
+    if (!fileName) {
+      const matchedKey = Object.keys(genderMap).find(k => hairStyle.includes(k) || k.includes(hairStyle));
+      if (matchedKey) fileName = genderMap[matchedKey];
+    }
+
+    // 3. 기장 기반 매칭 (직접 입력 시)
+    if (!fileName && hairLength) {
+      if (gender === '남성') {
+        if (hairLength.includes('숏')) fileName = 'kr_male_ivy_league.png';
+        else if (hairLength.includes('롱') || hairLength.includes('특수')) fileName = 'kr_male_semi_leaf_cut.png';
+        else fileName = 'kr_male_see_through_dandy.png';
+      } else {
+        if (hairLength.includes('숏')) fileName = 'kr_short_leaf.jpg';
+        else if (hairLength.includes('단발')) fileName = 'kr_bob_bonnie.jpg';
+        else if (hairLength.includes('롱')) fileName = 'east_female_long_grace.png';
+        else fileName = 'kr_medium_c_curl.jpg';
+      }
+    }
+
     if (fileName) {
       const filePath = path.join(process.cwd(), 'public', fileName);
       if (fs.existsSync(filePath)) {
@@ -58,8 +136,9 @@ function getByteLength(str: string): number {
 }
 
 export async function POST(request: NextRequest) {
-  let gender = '여성';
+  let gender: '여성' | '남성' = '여성';
   let hairStyle = '';
+  let hairLength = '';
   try {
     const cloneReq = request.clone();
     const rawBody = await cloneReq.text();
@@ -74,31 +153,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = JSON.parse(rawBody);
-    gender = body.gender || '여성';
+    gender = body.gender === '남성' ? '남성' : '여성';
     hairStyle = body.hairStyle || '';
-    const { image, hairLength, customPrompt } = body;
+    hairLength = body.hairLength || '';
+    const { image, customPrompt, outfitPrompt: reqOutfitPrompt, changeOutfit = true } = body;
 
-    if (!image || !gender || !hairLength || !hairStyle) {
+    if (!image || !gender || !hairStyle) {
       return NextResponse.json(
-        { error: '필수 데이터(이미지, 성별, 모발 길이, 타겟 스타일)가 누락되었습니다.' },
+        { error: '필수 데이터(이미지, 성별, 타겟 스타일)가 누락되었습니다.' },
         { status: 400 }
       );
     }
 
-    // 서버 환경변수에서 Stability AI API 키 획득
-    const apiKey = process.env.STABILITY_API_KEY || '';
-    
-    // 키가 설정되지 않았다면 로컬 Fallback 이미지 적용 (데모 비용 0원 보호 정책)
-    if (!apiKey) {
-      const fallbackImage = getLocalFallbackImage(gender, hairStyle);
-      if (fallbackImage) {
-        return NextResponse.json({ image: fallbackImage });
-      }
-      return NextResponse.json(
-        { error: '서버 AI 서비스 키(STABILITY_API_KEY)가 설정되지 않았습니다. .env.local을 확인해 주세요.' },
-        { status: 500 }
-      );
-    }
+    // Gemini API Key 획득 (.env.local 지원)
+    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 
     // base64 이미지 디코딩
     const match = image.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
@@ -110,97 +178,150 @@ export async function POST(request: NextRequest) {
       base64Image = match[2];
     }
 
-    // 프롬프트 가이드 보강 (동양인 헤어 텍스처 및 정밀 조명 튜닝)
-    let instruction = '';
-    if (customPrompt) {
-      instruction = customPrompt;
-    } else {
-      const isMale = gender === '남성';
-      if (isMale) {
-        instruction = `Redesign the hair of the Asian male in this photo to a ${hairLength} ${hairStyle} hairstyle. Keep the original face, facial features, clothing, background, and camera perspective exactly the same. Replace ONLY the hair to match the target style cleanly and naturally with a high-end Korean salon finish, natural volume, and healthy hair texture. K-beauty style, flawless skin, natural defined eyebrows, neat look. Photorealistic, professional studio lighting, 8k resolution, clear details.`;
-      } else {
-        instruction = `Redesign the hair of the Asian female in this photo to a ${hairLength} ${hairStyle} hairstyle. Keep the original face, facial features, clothing, background, and camera perspective exactly the same. Replace ONLY the hair to match the target style with elegant Korean salon hair design, beautiful healthy hair shine, perfect volume, and natural flowing textures. flawless radiant skin, soft eyeliner, lovely lip color that fits the hair tone. Photorealistic, professional studio lighting, 8k resolution, clear details.`;
-      }
-    }
+    // 스타일 고유 세부 영문 디스크립션 추출
+    const specificDetail = STYLE_PROMPT_DETAILS[hairStyle]
+      || Object.entries(STYLE_PROMPT_DETAILS).find(([k]) => hairStyle.includes(k))?.[1]
+      || `Redesign the hair to a ${hairLength} ${hairStyle} hairstyle with premium Korean salon texture and shine.`;
 
-    // Stability AI Multipart Form Data 구성
-    const formData = new FormData();
-    const buffer = Buffer.from(base64Image, 'base64');
-    const blob = new Blob([buffer], { type: mimeType });
-    
-    formData.append('init_image', blob, `image.${mimeType.split('/')[1] || 'jpeg'}`);
-    formData.append('init_image_mode', 'IMAGE_STRENGTH');
-    // 얼굴 형태 및 이목구비를 완벽히 유지하기 위해 0.65 수준으로 강하게 바인딩 튜닝
-    formData.append('image_strength', '0.65');
-    
-    // 긍정 프롬프트
-    formData.append('text_prompts[0][text]', instruction);
-    formData.append('text_prompts[0][weight]', '1.0');
-    // 부정 프롬프트 (서양인 왜곡 및 이목구비 찌그러짐 원천 차단)
-    formData.append('text_prompts[1][text]', 'distorted face, blurry face, different person, ugly, bad anatomy, deformed eyes, different clothing, different background, low quality');
-    formData.append('text_prompts[1][weight]', '-1.0');
-
-    // Stability AI API 호출 (SDXL Image-to-Image 엔드포인트)
-    const response = await fetch(
-      'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/image-to-image',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Accept': 'application/json',
-        },
-        body: formData,
-      }
+    // 추천 의상 영문 디렉션 추출
+    const matchedStyleItem = STYLE_OPTIONS[gender]?.find(
+      (s) => s.name === hairStyle || hairStyle.includes(s.name) || s.name.includes(hairStyle)
     );
+    const outfitDetail = reqOutfitPrompt
+      || matchedStyleItem?.outfitPrompt
+      || (gender === '남성'
+        ? 'modern stylish Korean tailored blazer over a crisp clean crewneck shirt'
+        : 'chic elegant tailored blazer jacket over a minimalist refined knit top');
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Stability AI Response Error:', errorText);
-      throw new Error(`Stability API HTTP ${response.status}: ${errorText}`);
+    // 프롬프트 구성 (동양인 얼굴/이목구비 완벽 보존 & 의상 맞춤 코디 & 512x512 고효율 최적화)
+    const resolutionSuffix = 'Output a crisp, high-quality 512x512 square resolution image.';
+    let instruction = '';
+
+    if (customPrompt) {
+      instruction = `${customPrompt}. Output a crisp, photorealistic studio image. ${resolutionSuffix}`;
+    } else if (changeOutfit) {
+      instruction = `Total makeover transformation: 1) Redesign and restyle the hair: ${specificDetail}. 2) Simultaneously upgrade and coordinate the customer's outfit into a fashionable, matching clothing style: ${outfitDetail}. Keep the person's original face, eyes, eyebrows, nose, lips, facial structure, skin texture, age, expression, and individual identity faithfully preserved. Photorealistic, professional studio lighting, 8k resolution, healthy hair shine. ${resolutionSuffix}`;
+    } else {
+      instruction = `${specificDetail} Keep the person's original face, eyes, eyebrows, nose, lips, facial structure, skin texture, age, expression, clothing, and background EXACTLY the same. Replace and restyle ONLY the hair. ${resolutionSuffix}`;
     }
 
-    const responseJSON = await response.json();
-    const generatedImageBase64 = responseJSON.artifacts?.[0]?.base64;
+    // 1. Gemini Flash Image API 호출 시도 (0원 무료 키 지원)
+    if (geminiApiKey) {
+      try {
+        const payload = JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: base64Image
+                  }
+                },
+                {
+                  text: instruction
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseModalities: ['IMAGE']
+          }
+        });
 
-    if (!generatedImageBase64) {
-      throw new Error('Stability AI did not return base64 image data.');
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiApiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: payload,
+          }
+        );
+
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          const imagePart = geminiData.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+          if (imagePart?.inlineData?.data) {
+            const outMime = imagePart.inlineData.mimeType || 'image/png';
+            return NextResponse.json({
+              image: `data:${outMime};base64,${imagePart.inlineData.data}`
+            });
+          }
+        } else {
+          const errText = await geminiRes.text();
+          console.warn('Gemini Flash Image API returned non-200:', geminiRes.status, errText);
+        }
+      } catch (geminiErr) {
+        console.warn('Gemini Flash Image Generation error, falling back:', geminiErr);
+      }
     }
 
-    // 결과 이미지 리턴 (기본 png 반환)
-    return NextResponse.json({
-      image: `data:image/png;base64,${generatedImageBase64}`
-    });
+    // 2. Stability AI 키가 있는 경우 서브 엔진으로 시도
+    const stabilityKey = process.env.STABILITY_API_KEY || '';
+    if (stabilityKey) {
+      try {
+        const formData = new FormData();
+        const buffer = Buffer.from(base64Image, 'base64');
+        const blob = new Blob([buffer], { type: mimeType });
+        
+        formData.append('init_image', blob, `image.${mimeType.split('/')[1] || 'jpeg'}`);
+        formData.append('init_image_mode', 'IMAGE_STRENGTH');
+        formData.append('image_strength', '0.65');
+        formData.append('text_prompts[0][text]', instruction);
+        formData.append('text_prompts[0][weight]', '1.0');
+        formData.append('text_prompts[1][text]', 'distorted face, blurry face, different person, ugly, bad anatomy, deformed eyes, different clothing, low quality');
+        formData.append('text_prompts[1][weight]', '-1.0');
 
-  } catch (error: any) {
-    console.error('Stability API Error:', error);
-    
-    // 에러 발생 시 최후의 수단으로 로컬 이미지 fallback 반환 시도
-    const fallbackImage = getLocalFallbackImage(gender, hairStyle);
+        const response = await fetch(
+          'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/image-to-image',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${stabilityKey}`,
+              'Accept': 'application/json',
+            },
+            body: formData,
+          }
+        );
+
+        if (response.ok) {
+          const responseJSON = await response.json();
+          const generatedBase64 = responseJSON.artifacts?.[0]?.base64;
+          if (generatedBase64) {
+            return NextResponse.json({
+              image: `data:image/png;base64,${generatedBase64}`
+            });
+          }
+        }
+      } catch (stErr) {
+        console.warn('Stability AI error:', stErr);
+      }
+    }
+
+    // 3. Fallback: 고화질 로컬 프리셋 이미지 즉시 매칭
+    const fallbackImage = getLocalFallbackImage(gender, hairStyle, hairLength);
     if (fallbackImage) {
-      console.log(`Fallback local image applied for ${gender} - ${hairStyle}`);
       return NextResponse.json({ image: fallbackImage });
     }
 
-    const errorMessage = error?.message || '';
-    
-    // API 키가 유효하지 않은 경우 처리
-    if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-      return NextResponse.json(
-        { error: '입력하신 Stability AI API 키가 유효하지 않습니다. platform.stability.ai에서 올바른 키를 생성했는지 확인해 주세요.' },
-        { status: 401 }
-      );
-    }
+    return NextResponse.json(
+      { error: '이미지 생성 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.' },
+      { status: 500 }
+    );
 
-    // 크레딧 부족 등 제한 처리
-    if (errorMessage.includes('402') || errorMessage.includes('Payment Required') || errorMessage.includes('credit')) {
-      return NextResponse.json(
-        { error: 'Stability AI API 크레딧이 부족합니다. 계정에 크레딧을 추가하시거나 로컬 데모 모드를 확인해 주세요.' },
-        { status: 402 }
-      );
+  } catch (error: any) {
+    console.error('Generate Route Error:', error);
+    
+    // 에러 시 안전 fallback
+    const fallbackImage = getLocalFallbackImage(gender, hairStyle, hairLength);
+    if (fallbackImage) {
+      return NextResponse.json({ image: fallbackImage });
     }
 
     return NextResponse.json(
-      { error: `서버 오류가 발생했습니다: ${errorMessage || '알 수 없는 에러'}` },
+      { error: `이미지 생성 중 오류가 발생했습니다: ${error?.message || '알 수 없는 오류'}` },
       { status: 500 }
     );
   }

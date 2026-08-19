@@ -7,15 +7,23 @@ import BeforeAfterSlider from '@/components/BeforeAfterSlider';
 import { Sparkles, ArrowRight, Download, Share2, RefreshCw, Key, ShieldCheck, HelpCircle, Activity, User, Check, Trash2, Settings, CreditCard, X, Venus, Mars, Coins, Compass } from 'lucide-react';
 
 import { STYLE_OPTIONS, LENGTH_OPTIONS, type StyleItem } from '@/data/styleOptions';
+import { saveProposalsToDB, loadProposalsFromDB, clearProposalsFromDB } from '@/utils/indexedDB';
 
-// 기장 데이터 정의
+// 기장 데이터 및 아이콘 정의
+const LENGTH_ICONS: Record<string, string> = {
+  '전체': '🌟',
+  '숏컷': '✂️',
+  '숏': '✂️',
+  '숏(크롭)': '✂️',
+  '단발': '🎀',
+  '미디움 숏': '💈',
+  '미디움': '💈',
+  '롱': '👑',
+  '특수 레이어드': '✨',
+  '리프(장발)': '🌿',
+  '롱 / 특수': '🌿',
+};
 
-
-
-
-
-// 스타일별 가변 옵션 데이터
-// 스타일별 가변 옵션 데이터
 
 
 const LOADING_MESSAGES = [
@@ -33,6 +41,7 @@ interface DiagnosisResult {
   recommendations: Array<{
     styleName: string;
     reason: string;
+    recommendedOutfit?: string;
     stylingTip?: string;
     hiddenPrompt?: string;
   }>;
@@ -52,6 +61,7 @@ interface SimulationResult {
   designOption: string;
   designCost: string;
   stylingTip: string;
+  recommendedOutfit?: string;
   watermarkedFile?: File;
   upsell?: string;
 }
@@ -355,10 +365,18 @@ export default function HomePage() {
   // AI 추천 스타일 다중 선택 추가
   const [selectedRecommendations, setSelectedRecommendations] = useState<string[]>([]);
 
+  // 의상 맞춤 코디 자동 변환 옵션 상태 (기본값 ON)
+  const [enableOutfitStyling, setEnableOutfitStyling] = useState<boolean>(true);
+
   const [originalImage, setOriginalImage] = useState<string | null>(null);
 
   // 히스토리 목록
   const [resultsList, setResultsList] = useState<SimulationResult[]>([]);
+  // 선택된 활성 제안서 필터 ('all' 또는 특정 result.id)
+  const [activeProposalId, setActiveProposalId] = useState<string>('all');
+  // 공유 팝업 모달 대상 제안서 상태
+  const [sharingReportResult, setSharingReportResult] = useState<SimulationResult | null>(null);
+  const [isCopiedReport, setIsCopiedReport] = useState<boolean>(false);
 
   // 헤어 AI 진단 상태
   const [isDiagnosing, setIsDiagnosing] = useState<boolean>(false);
@@ -462,7 +480,7 @@ export default function HomePage() {
 
   // 성별 변경 시 기장과 스타일 초기화 및 sessionStorage에 성별 백업
   useEffect(() => {
-    setSelectedLength(LENGTH_OPTIONS[gender][0]);
+    setSelectedLength('전체');
     setSelectedStyles([STYLE_OPTIONS[gender][0].name]);
     setSelectedRecommendations([]); // AI 추천 선택 리셋
     setCustomStyleText('');
@@ -504,7 +522,7 @@ export default function HomePage() {
         const schemeUrl = currentUrl.replace(/^https?:\/\//, '');
         const intentUrl = `intent://${schemeUrl}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;package=com.android.chrome;end`;
         window.location.href = intentUrl;
-      } 
+      }
       // 2. iOS 기기 -> 외부 앱 열기 스키마 시도 및 사파리 수동 이동 가이드 오버레이 활성화
       else if (/iPhone|iPad|iPod/i.test(userAgent)) {
         const externalAppUrl = `kakaotalk://web/openExternalApp?url=${encodeURIComponent(currentUrl)}`;
@@ -537,7 +555,7 @@ export default function HomePage() {
     if (savedLength) {
       setSelectedLength(savedLength);
     } else {
-      setSelectedLength(LENGTH_OPTIONS[savedGender === '남성' ? '남성' : '여성'][0]);
+      setSelectedLength('전체');
     }
 
     const savedStyles = safeSessionStorage.getItem('modestyle_selected_styles');
@@ -573,33 +591,42 @@ export default function HomePage() {
       }
     }
 
-    // 0-4. 제안서 목록(resultsList) 복구 및 워터마크 파일 백그라운드 재생성
-    const savedResults = safeSessionStorage.getItem('modestyle_results_list');
+    // 0-4. 제안서 목록 IndexedDB 대용량 영구 저장소에서 완전 복구
     const tempSalonName = safeLocalStorage.getItem('modestyle_salon_name') || '';
-    if (savedResults) {
-      try {
-        const parsedList: SimulationResult[] = JSON.parse(savedResults);
-        // 복구 시 원본 이미지(savedOriginalImage)를 각 아이템의 beforeImage에 주입
-        const restoredList = parsedList.map(item => ({
+    loadProposalsFromDB().then((dbList) => {
+      if (dbList && dbList.length > 0) {
+        const restoredList = dbList.map((item: any) => ({
           ...item,
           beforeImage: savedOriginalImage || item.beforeImage
         }));
         setResultsList(restoredList);
 
-        // 백그라운드에서 워터마크 파일 비동기 재생성하여 매핑
-        restoredList.forEach((item) => {
+        // 워터마크 파일 비동기 재생성
+        restoredList.forEach((item: any) => {
           createWatermarkedFile(item.afterImage, item.styleName, tempSalonName)
             .then((file) => {
               setResultsList((prev) =>
                 prev.map((p) => (p.id === item.id ? { ...p, watermarkedFile: file } : p))
               );
             })
-            .catch((err) => console.error('마운트 시 워터마크 재생성 실패:', err));
+            .catch((err) => console.error('워터마크 재생성 실패:', err));
         });
-      } catch (e) {
-        console.error('결과 리스트 세션 복구 실패:', e);
+      } else {
+        // Fallback: 기존 세션스토리지에 있는 경우 복구
+        const savedResults = safeSessionStorage.getItem('modestyle_results_list');
+        if (savedResults) {
+          try {
+            const parsedList: SimulationResult[] = JSON.parse(savedResults);
+            const restoredList = parsedList.map(item => ({
+              ...item,
+              beforeImage: savedOriginalImage || item.beforeImage
+            }));
+            setResultsList(restoredList);
+            saveProposalsToDB(restoredList);
+          } catch (e) { }
+        }
       }
-    }
+    }).catch(err => console.error('IndexedDB 로드 오류:', err));
 
     // 1. 살롱 설정 정보 로드
     const savedSalon = safeLocalStorage.getItem('modestyle_salon_name');
@@ -1053,6 +1080,11 @@ export default function HomePage() {
       const startTime = performance.now();
 
       try {
+        // 스타일 정보 매칭 및 실제 기장 결정 (스타일 고유 기장 최우선 반영)
+        const matchedStyleInfo = STYLE_OPTIONS[gender].find(s => s.name === job.styleName);
+        const resolvedLength = matchedStyleInfo?.lengthCategory
+          || ((selectedLength && selectedLength !== '전체') ? selectedLength : (gender === '남성' ? '미디움' : '미디움'));
+
         const response = await fetch('/api/generate', {
           method: 'POST',
           headers: {
@@ -1061,9 +1093,11 @@ export default function HomePage() {
           body: JSON.stringify({
             image: originalImage,
             gender,
-            hairLength: selectedLength,
+            hairLength: resolvedLength,
             hairStyle: job.styleName,
             customPrompt: job.customPrompt,
+            outfitPrompt: matchedStyleInfo?.outfitPrompt,
+            changeOutfit: enableOutfitStyling,
           }),
         });
 
@@ -1076,9 +1110,6 @@ export default function HomePage() {
         const endTime = performance.now();
         const duration = parseFloat(((endTime - startTime) / 1000).toFixed(1));
 
-        // 스타일 정보 매칭
-        const matchedStyleInfo = STYLE_OPTIONS[gender].find(s => s.name === job.styleName);
-
         const careOption = matchedStyleInfo?.careOption || '🧪 스타일 유지력 향상을 위한 모발 수분 단백질 케어';
         const careCost = matchedStyleInfo?.careCost || '추가 비용 : 50,000원 ~ 80,000원';
         const designOption = matchedStyleInfo?.designOption || '🧴 디자인 디테일 교정 (사이드 다운펌 / 뿌리 볼륨 디테일링)';
@@ -1090,6 +1121,11 @@ export default function HomePage() {
           || matchedStyleInfo?.stylingTip
           || '샴푸 후 찬바람으로 건조시킨 뒤 가벼운 헤어 에센스를 발라 부스스함을 정돈해 줍니다.';
 
+        // 추천 의상 코디 매칭
+        const recommendedOutfit = recommendedStyleInfo?.recommendedOutfit
+          || matchedStyleInfo?.recommendedOutfit
+          || (gender === '남성' ? '모던 스마트 캐주얼 셋업 & 옥스포드 셔츠' : '프렌치 시크 테일러드 자켓 & 실키 니트 코디');
+
         // 신규 결과를 히스토리 리스트 맨 앞에 추가 (최신순 누적)
         const newResult: SimulationResult = {
           id: Math.random().toString(36).substring(2, 9),
@@ -1097,7 +1133,7 @@ export default function HomePage() {
           beforeImage: originalImage,
           afterImage: data.image,
           gender,
-          length: selectedLength,
+          length: resolvedLength,
           styleName: job.styleName,
           generationTime: duration,
           careOption,
@@ -1105,6 +1141,7 @@ export default function HomePage() {
           designOption,
           designCost,
           stylingTip,
+          recommendedOutfit,
           upsell: matchedStyleInfo?.upsell
         };
 
@@ -1114,12 +1151,8 @@ export default function HomePage() {
             newResult.watermarkedFile = file;
             setResultsList((prev) => {
               const next = [newResult, ...prev];
-              // 세션스토리지 백업에는 최신 3개만 보관하고, 중복되는 beforeImage(원본)는 비워서 용량 최적화 (OOM 방지)
-              const serializedList = next.slice(0, 3).map(({ watermarkedFile, beforeImage, ...rest }) => ({
-                ...rest,
-                beforeImage: ''
-              }));
-              safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
+              // IndexedDB 대용량 영구 저장소에 전체 제안서 안전 저장
+              saveProposalsToDB(next);
               return next;
             });
           })
@@ -1128,11 +1161,7 @@ export default function HomePage() {
             // 실패해도 결과 카드는 정상 노출되도록 추가
             setResultsList((prev) => {
               const next = [newResult, ...prev];
-              const serializedList = next.slice(0, 3).map(({ watermarkedFile, beforeImage, ...rest }) => ({
-                ...rest,
-                beforeImage: ''
-              }));
-              safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
+              saveProposalsToDB(next);
               return next;
             });
           });
@@ -1260,23 +1289,60 @@ export default function HomePage() {
     img.src = result.afterImage;
   };
 
+  // 📄 제안서 종합 리포트 공유 모달 오픈
+  const handleShareFullReport = (result: SimulationResult) => {
+    setIsCopiedReport(false);
+    setSharingReportResult(result);
+  };
+
+  // 모달 내 리포트 텍스트 복사 핸들러
+  const handleCopyReportText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setIsCopiedReport(true);
+      setTimeout(() => setIsCopiedReport(false), 3000);
+    } catch (e) {
+      alert(text);
+    }
+  };
+
+  // 모달 내 모바일 네이티브 공유 핸들러 (모바일 기기일 때만 트리거)
+  const handleNativeShare = async (result: SimulationResult, text: string) => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        if (result.watermarkedFile && navigator.canShare && navigator.canShare({ files: [result.watermarkedFile] })) {
+          await navigator.share({
+            title: `${salonName || 'ModeStyle Pro'} 헤어 제안서`,
+            text: text,
+            files: [result.watermarkedFile]
+          });
+        } else {
+          await navigator.share({
+            title: `${salonName || 'ModeStyle Pro'} 헤어 제안서`,
+            text: text
+          });
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          handleCopyReportText(text);
+        }
+      }
+    } else {
+      handleCopyReportText(text);
+    }
+  };
+
   // 개별 결과 삭제
   const handleDeleteResultItem = (id: string) => {
+    if (activeProposalId === id) {
+      setActiveProposalId('all');
+    }
     setResultsList((prev) => {
       const next = prev.filter((item) => item.id !== id);
-      // 동기식 세션 백업
       if (next.length > 0) {
-        const serializedList = next.slice(0, 3).map(({ watermarkedFile, beforeImage, ...rest }) => ({
-          ...rest,
-          beforeImage: ''
-        }));
-        safeSessionStorage.setItem('modestyle_results_list', JSON.stringify(serializedList));
+        saveProposalsToDB(next);
       } else {
-        try {
-          if (typeof window !== 'undefined' && window.sessionStorage) {
-            sessionStorage.removeItem('modestyle_results_list');
-          }
-        } catch (e) { }
+        clearProposalsFromDB();
       }
       return next;
     });
@@ -1740,6 +1806,20 @@ export default function HomePage() {
               <span className="gold-gradient">헤어 컨설팅 솔루션</span>
             </h2>
 
+            {/* 타이틀 하단 대표 비주얼 이미지 추가 (브라우저 확장 프로그램 DOM 침범 방지) */}
+            <div
+              suppressHydrationWarning={true}
+              className="relative w-full max-w-[600px] rounded-2xl overflow-hidden border border-zinc-800/80 shadow-lg mx-auto lg:mx-0 my-6"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                suppressHydrationWarning={true}
+                src="/Front%20image.jpg"
+                alt="ModeStyle Pro 대표 예시"
+                className="w-full h-auto block"
+              />
+            </div>
+
             <p className="text-zinc-400 text-sm sm:text-base max-w-xl mx-auto lg:mx-0 leading-relaxed">
               사진 한 장만으로, 고객이 원하던 특별한 변신을 제안해보세요.
             </p>
@@ -1929,7 +2009,7 @@ export default function HomePage() {
                                   : 'bg-zinc-900/40 border-zinc-850 hover:bg-zinc-900/70 text-zinc-300'
                                   }`}
                               >
-                                <div className="space-y-1">
+                                <div className="space-y-1.5 flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
                                     <span className={`w-4 h-4 rounded-full text-[9px] font-extrabold flex items-center justify-center ${isChecked ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-900 text-amber-400 border border-zinc-850'
                                       }`}>
@@ -1938,6 +2018,15 @@ export default function HomePage() {
                                     <span className={`text-sm font-extrabold ${isChecked ? 'text-amber-400' : 'text-zinc-100'}`}>{rec.styleName}</span>
                                   </div>
                                   <p className={`text-xs leading-normal max-w-xs ${isChecked ? 'text-amber-300 font-medium' : 'text-zinc-300'}`}>{rec.reason}</p>
+                                  {rec.recommendedOutfit && (
+                                    <div className="pt-0.5">
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold inline-flex items-center gap-1 ${
+                                        isChecked ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-zinc-950 text-zinc-400 border border-zinc-800'
+                                      }`}>
+                                        👗 <strong>추천 코디:</strong> {rec.recommendedOutfit}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <button
@@ -1983,75 +2072,97 @@ export default function HomePage() {
               {/* Step 3: 스타일 그리드 (다중 선택 가능) */}
               <div ref={stylesSectionRef} className="glass-panel p-5 rounded-2xl border border-zinc-800 space-y-5 scroll-mt-24">
 
-                {/* 1. 머리 기장 선택 섹션 */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">2</span>
-                    <span className="text-zinc-300 text-xs font-bold">머리 기장 선택</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {LENGTH_OPTIONS[gender].map((length) => {
-                      const isSelected = selectedLength === length;
-                      return (
-                        <button
-                          key={length}
-                          type="button"
-                          onClick={() => setSelectedLength(length)}
-                          className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all ${isSelected
-                              ? 'bg-amber-400 border-amber-400 text-zinc-950 shadow-md font-extrabold scale-[1.02]'
-                              : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-700 text-zinc-400'
-                            }`}
-                        >
-                          {length}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* 2. 헤어 스타일 선택 섹션 */}
-                <div className="space-y-3 pt-4 border-t border-zinc-800/80">
+                {/* 기장별 헤어 스타일 선택 섹션 */}
+                <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-zinc-300 text-xs font-bold flex items-center gap-1.5">
+                    <span className="text-zinc-300 text-sm font-bold flex items-center gap-1.5">
                       <span className="w-5 h-5 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] text-amber-400 font-extrabold">3</span>
-                      {gender} 헤어 스타일 (다중 선택 가능)
+                      {gender} 기장별 헤어 스타일 (다중 선택 가능)
                     </span>
-                    <span className="text-[10px] text-amber-400/80 font-medium">
+                    <span className="text-xs text-amber-400 font-semibold bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
                       {selectedStyles.length}개 선택됨
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {STYLE_OPTIONS[gender].map((style) => {
-                      const isChecked = selectedStyles.includes(style.name);
+                  {/* 기장별 순서대로 그룹화하여 배치 */}
+                  <div className="space-y-6">
+                    {LENGTH_OPTIONS[gender].map((category) => {
+                      const categoryStyles = STYLE_OPTIONS[gender].filter(
+                        (s) => s.lengthCategory === category
+                      );
+                      if (categoryStyles.length === 0) return null;
+                      const categoryIcon = LENGTH_ICONS[category] || '✨';
+
                       return (
-                        <div
-                          key={style.name}
-                          onClick={() => handleStyleToggle(style.name)}
-                          className={`p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-1 group relative cursor-pointer ${isChecked
-                            ? 'bg-amber-400/5 border-amber-400 text-amber-400 shadow-sm'
-                            : 'bg-zinc-900/30 border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900/50 text-zinc-300'
-                            }`}
-                          role="button"
-                          tabIndex={0}
-                        >
-                          <div className="flex items-center justify-between w-full">
-                            <span className="text-xs font-bold flex items-center gap-2.5">
-                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-zinc-850 bg-zinc-950 shrink-0 relative">
-                                <img
-                                  src={style.image}
-                                  alt={style.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                              {style.name}
-                            </span>
-                            <span className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${isChecked
-                              ? 'border-amber-400 bg-amber-400 text-zinc-950'
-                              : 'border-zinc-700'
-                              }`}>
-                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                            </span>
+                        <div key={category} className="space-y-3">
+                          {/* 기장 그룹 헤더 */}
+                          <div className="flex items-center justify-between px-1 pb-1.5 border-b border-zinc-800/80">
+                            <div className="flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-amber-400">
+                              <span>{categoryIcon}</span>
+                              <span>{category}</span>
+                              <span className="text-[11px] text-zinc-500 font-normal ml-1">
+                                ({categoryStyles.length}개 디자인)
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 기장에 속한 스타일 카드 그리드 (2배 이상 큰 이미지 & 스타일명만 표시) */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {categoryStyles.map((style) => {
+                              const isChecked = selectedStyles.includes(style.name);
+                              return (
+                                <div
+                                  key={style.name}
+                                  onClick={() => handleStyleToggle(style.name)}
+                                  className={`p-3 sm:p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 group relative cursor-pointer ${isChecked
+                                    ? 'bg-amber-400/10 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/30'
+                                    : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-700 hover:bg-zinc-900/70 text-zinc-300'
+                                    }`}
+                                  role="button"
+                                  tabIndex={0}
+                                >
+                                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                    {/* 기존 44px 대비 2.2배 이상 확대된 100px 대형 썸네일 */}
+                                    <div className="w-24 h-24 sm:w-26 sm:h-26 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 shrink-0 relative flex items-center justify-center shadow-inner">
+                                      {style.image && (
+                                        <img
+                                          src={style.image}
+                                          alt={style.name}
+                                          className="w-full h-full object-cover relative z-10 group-hover:scale-105 transition-transform duration-300"
+                                          onError={(e) => {
+                                            (e.currentTarget as HTMLElement).style.display = 'none';
+                                          }}
+                                        />
+                                      )}
+                                      <span className="text-3xl absolute select-none">
+                                        {style.emoji || '✨'}
+                                      </span>
+                                    </div>
+
+                                    {/* 스타일 명칭 및 추천 의상 표시 */}
+                                    <div className="min-w-0 flex-1 space-y-1">
+                                      <div className="text-sm sm:text-base font-bold text-zinc-100 group-hover:text-amber-300 transition-colors leading-snug">
+                                        {style.name}
+                                      </div>
+                                      {style.recommendedOutfit && (
+                                        <div className="text-[10px] text-zinc-400 font-medium truncate flex items-center gap-1">
+                                          <span>👗</span>
+                                          <span className="truncate">{style.recommendedOutfit}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* 체크마크 */}
+                                  <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${isChecked
+                                    ? 'border-amber-400 bg-amber-400 text-zinc-950 font-bold'
+                                    : 'border-zinc-700 bg-zinc-900/40'
+                                    }`}>
+                                    {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -2067,8 +2178,8 @@ export default function HomePage() {
                       onClick={handleCustomStyleToggle}
                       disabled={!customStyleText.trim()}
                       className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isCustomStyleApplied && customStyleText.trim()
-                          ? 'border-amber-400 bg-amber-400 text-zinc-950'
-                          : 'border-zinc-700 bg-zinc-900/40'
+                        ? 'border-amber-400 bg-amber-400 text-zinc-950'
+                        : 'border-zinc-700 bg-zinc-900/40'
                         }`}
                     >
                       {isCustomStyleApplied && customStyleText.trim() && <Check className="w-3 h-3 stroke-[3]" />}
@@ -2090,6 +2201,39 @@ export default function HomePage() {
                       className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-950/80 border border-zinc-850 hover:border-zinc-700 text-xs md:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-400 transition-all shadow-inner"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* 의상 맞춤 코디 자동 변환 옵션 컨트롤 */}
+              <div
+                onClick={() => setEnableOutfitStyling(prev => !prev)}
+                className="glass-panel p-4 rounded-2xl border border-zinc-800 hover:border-amber-400/50 transition-all flex items-center justify-between cursor-pointer group shadow-md"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-300 text-base shrink-0 group-hover:scale-105 transition-transform">
+                    👗
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-xs sm:text-sm font-bold text-zinc-100 flex items-center gap-2">
+                      <span>헤어 맞춤 의상 코디 함께 변환</span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.2 rounded-full ${
+                        enableOutfitStyling ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-800 text-zinc-500'
+                      }`}>
+                        {enableOutfitStyling ? 'ON (추천)' : 'OFF'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400">
+                      선택한 헤어 스타일과 최상의 조화를 이루는 트렌디한 의상으로 함께 코디합니다.
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`w-12 h-6.5 rounded-full transition-colors relative p-0.5 shrink-0 flex items-center ${
+                  enableOutfitStyling ? 'bg-amber-400' : 'bg-zinc-800'
+                }`}>
+                  <div className={`w-5.5 h-5.5 rounded-full bg-zinc-950 transition-transform shadow-md ${
+                    enableOutfitStyling ? 'translate-x-5.5' : 'translate-x-0'
+                  }`} />
                 </div>
               </div>
 
@@ -2163,21 +2307,105 @@ export default function HomePage() {
 
         {/* 3. SIMULATION RESULT SECTION (최신순 결과 히스토리 누적 및 스타일별 가변 옵션화) */}
         {resultsList.length > 0 && originalImage && (
-          <section id="simulation-results-container" className="space-y-8 scroll-mt-24">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+          <section id="simulation-results-container" className="space-y-6 scroll-mt-24">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
               <div>
-                <h3 className="text-xl md:text-2xl font-extrabold text-white">시뮬레이션 히스토리 목록</h3>
-                <p className="text-xs text-zinc-400">
-                  생성된 헤어 시뮬레이션들이 최신순으로 아래로 쌓입니다. 비교하고 싶은 스타일을 선택하여 상담에 이용하세요.
+                <h3 className="text-xl md:text-2xl font-extrabold text-white flex items-center gap-2">
+                  <span>📂</span> 헤어 제안서 리포트 보관함
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  생성된 헤어 시뮬레이션 결과가 자동으로 저장됩니다. 아래 목록에서 원하는 제안서를 클릭해 상세 리포트를 확인하세요.
                 </p>
               </div>
-              <div className="text-xs bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-400">
-                🗂️ 총 <span className="text-amber-400 font-bold">{resultsList.length}개</span>의 제안서 보관 중
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-xs bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-300">
+                  🗂️ 총 <strong className="text-amber-400">{resultsList.length}개</strong>의 제안서 보관 중
+                </span>
               </div>
             </div>
 
+            {/* 🗂️ 제안서 목록 퀵 선택 네비게이터 바 (Quick Proposal Selector) */}
+            <div className="bg-zinc-950/80 border border-zinc-850 p-3.5 rounded-2xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  <span>📑</span> 제안서 빠른 선택 목록 (클릭하여 보기)
+                </span>
+                {activeProposalId !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveProposalId('all')}
+                    className="text-xs text-amber-400 hover:text-amber-300 font-bold underline transition-colors"
+                  >
+                    전체 모아보기로 전환
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin scrollbar-thumb-zinc-700">
+                {/* 1. 전체 모아보기 탭 */}
+                <button
+                  type="button"
+                  onClick={() => setActiveProposalId('all')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all duration-200 border ${
+                    activeProposalId === 'all'
+                      ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/30'
+                      : 'bg-zinc-900/90 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850'
+                  }`}
+                >
+                  <span>✨ 전체 모아보기</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    activeProposalId === 'all' ? 'bg-amber-400 text-zinc-950 font-extrabold' : 'bg-zinc-800 text-zinc-400'
+                  }`}>
+                    {resultsList.length}
+                  </span>
+                </button>
+
+                {/* 2. 각 제안서별 개별 선택 카드 탭 */}
+                {resultsList.map((res, idx) => {
+                  const isSelected = activeProposalId === res.id;
+                  return (
+                    <button
+                      key={res.id}
+                      type="button"
+                      onClick={() => setActiveProposalId(res.id)}
+                      className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all duration-200 border ${
+                        isSelected
+                          ? 'bg-amber-400/20 border-amber-400 text-white shadow-lg ring-2 ring-amber-400/40'
+                          : 'bg-zinc-900/90 border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 hover:bg-zinc-850'
+                      }`}
+                    >
+                      {/* 미니 썸네일 */}
+                      <div className="w-7 h-7 rounded-lg overflow-hidden border border-zinc-700 shrink-0 bg-zinc-800">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={res.afterImage}
+                          alt={res.styleName}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+
+                      <div className="text-left">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`font-bold ${isSelected ? 'text-amber-300' : 'text-zinc-200'}`}>
+                            {res.styleName}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-800/80 text-zinc-400 font-mono">
+                            {res.length}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-zinc-500 font-mono">
+                          {res.timestamp || `#${idx + 1}`}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 제안서 리포트 카드 렌더링 (선택된 항목 또는 전체) */}
             <div className="space-y-8">
-              {resultsList.map((result) => (
+              {(activeProposalId === 'all' ? resultsList : resultsList.filter(r => r.id === activeProposalId)).map((result) => (
                 <div
                   key={result.id}
                   className="glass-panel p-6 md:p-8 rounded-3xl border border-zinc-800 shadow-2xl space-y-6 relative transition-all duration-300 hover:border-zinc-700"
@@ -2259,15 +2487,41 @@ export default function HomePage() {
                         </div>
                       )}
 
-                      <div className="flex flex-col sm:flex-row items-center gap-3">
-                        {/* 피드백 반영: 다운로드 클릭 시 ModeStylePro + 미용실 명 워터마크 자동 합성 */}
+                      {/* 헤어 맞춤 추천 의상 코디 섹션 */}
+                      {result.recommendedOutfit && (
+                        <div className="bg-zinc-950 border border-amber-400/20 bg-amber-400/5 p-4 rounded-2xl space-y-2 text-left">
+                          <span className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                            👗 헤어 맞춤 추천 의상 코디 (Fashion Styling)
+                          </span>
+                          <p className="text-sm text-zinc-200 leading-relaxed font-medium">
+                            {result.recommendedOutfit}
+                          </p>
+                          <p className="text-[11px] text-zinc-400">
+                            * 헤어 실루엣과 분위기를 극대화하도록 엄선된 베스트 스타일링 코디입니다.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                        {/* 1. 제안서 종합 리포트 공유하기 버튼 (메인 골드 강조) */}
+                        <button
+                          onClick={() => handleShareFullReport(result)}
+                          type="button"
+                          className="flex-1 w-full gold-bg-gradient hover:opacity-95 text-zinc-950 font-extrabold py-3.5 px-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 text-xs md:text-sm active:scale-[0.98]"
+                        >
+                          <Share2 className="w-4 h-4" />
+                          <span>📋 헤어 제안서 리포트 공유하기</span>
+                        </button>
+
+                        {/* 2. 제안 이미지 다운로드/저장 버튼 */}
                         <button
                           onClick={() => handleShareOrDownloadItem(result)}
                           type="button"
-                          className="flex-1 w-full bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-extrabold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md text-xs md:text-sm"
+                          className="w-full sm:w-auto bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-zinc-200 font-bold py-3.5 px-5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md text-xs md:text-sm active:scale-[0.98]"
+                          title="워터마크 합성 이미지 파일 저장"
                         >
-                          <Share2 className="w-4 h-4" />
-                          제안 이미지 공유하기
+                          <Download className="w-4 h-4 text-amber-400" />
+                          <span>이미지 저장</span>
                         </button>
                       </div>
                     </div>
@@ -2275,6 +2529,37 @@ export default function HomePage() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* 🌟 제안서 보관함 최하단 빠른 공유 & 상담 안내 배너 */}
+            <div className="glass-panel p-5 rounded-2xl border border-amber-400/30 bg-amber-400/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3 text-left">
+                <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300 font-bold text-lg shrink-0">
+                  💬
+                </div>
+                <div>
+                  <h5 className="text-sm font-bold text-white">고객 맞춤 상담 제안서 완성</h5>
+                  <p className="text-xs text-zinc-400">
+                    원하시는 스타일 제안서를 선택하여 고객님께 카카오톡이나 메시지로 간편하게 공유해 보세요.
+                  </p>
+                </div>
+              </div>
+
+              {resultsList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = activeProposalId !== 'all' 
+                      ? resultsList.find(r => r.id === activeProposalId) || resultsList[0]
+                      : resultsList[0];
+                    handleShareFullReport(target);
+                  }}
+                  className="w-full sm:w-auto gold-bg-gradient hover:opacity-95 text-zinc-950 font-extrabold py-3 px-5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 text-xs md:text-sm shrink-0"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>현재 제안서 리포트 공유하기</span>
+                </button>
+              )}
             </div>
           </section>
         )}
@@ -2441,6 +2726,117 @@ export default function HomePage() {
             <div className="text-[10px] text-zinc-600 text-center">
               로그인 시 이용약관 및 개인정보처리방침에 동의한 것으로 간주됩니다.
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. 📄 헤어 제안서 리포트 공유 전용 모달 */}
+      {sharingReportResult && (
+        <div className="fixed inset-0 z-[999] bg-zinc-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel w-full max-w-lg rounded-3xl border border-zinc-750 shadow-2xl p-6 md:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-200 relative max-h-[90vh] overflow-y-auto">
+            {/* 닫기 버튼 */}
+            <button
+              onClick={() => setSharingReportResult(null)}
+              type="button"
+              className="absolute top-5 right-5 text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl gold-bg-gradient flex items-center justify-center text-zinc-950 font-bold text-lg shrink-0 shadow-md">
+                📋
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">헤어 맞춤 제안서 리포트 공유</h3>
+                <p className="text-xs text-zinc-400">
+                  {sharingReportResult.gender} {sharingReportResult.length} ‘<span className="text-amber-400 font-bold">{sharingReportResult.styleName}</span>’
+                </p>
+              </div>
+            </div>
+
+            {/* 리포트 내용 미리보기 박스 */}
+            {(() => {
+              const reportText = `[${salonName || 'ModeStyle Pro'} 헤어 맞춤 제안서]
+✨ 추천 스타일: ${sharingReportResult.gender} ${sharingReportResult.length} ‘${sharingReportResult.styleName}’
+
+👗 추천 의상 코디 (Fashion Styling):
+${sharingReportResult.recommendedOutfit || '헤어 스타일에 어울리는 트렌디 모던 룩'}
+
+📋 추천 시술 견적 옵션:
+• 기본 시술: ${sharingReportResult.styleName} 헤어 디자인
+• ${sharingReportResult.careOption} (${sharingReportResult.careCost})
+• ${sharingReportResult.designOption} (${sharingReportResult.designCost})
+${sharingReportResult.upsell ? `• ${sharingReportResult.upsell}` : ''}
+
+🧴 홈 스타일링 & 관리 가이드:
+${sharingReportResult.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨을 살려주세요.'}
+
+📍 상담 및 예약 문의: ${salonName || 'ModeStyle Pro 헤어 살롱'}`;
+
+              return (
+                <div className="space-y-4">
+                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs text-zinc-400 font-bold pb-1 border-b border-zinc-850">
+                      <span>📄 리포트 전송 내용</span>
+                      {isCopiedReport && (
+                        <span className="text-amber-400 flex items-center gap-1 font-bold animate-in fade-in">
+                          <Check className="w-3.5 h-3.5" /> 복사 완료!
+                        </span>
+                      )}
+                    </div>
+                    <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-sans leading-relaxed max-h-48 overflow-y-auto pr-1">
+                      {reportText}
+                    </pre>
+                  </div>
+
+                  {/* 공유 액션 버튼 그룹 */}
+                  <div className="space-y-2.5">
+                    {/* 1. 카카오톡/메시지용 텍스트 복사 (PC/모바일 공통 1순위) */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyReportText(reportText)}
+                      className={`w-full py-3.5 px-4 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${
+                        isCopiedReport
+                          ? 'bg-emerald-500 text-white shadow-emerald-500/20'
+                          : 'gold-bg-gradient text-zinc-950 shadow-amber-400/20 hover:opacity-95'
+                      }`}
+                    >
+                      {isCopiedReport ? (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>복사 완료! (카카오톡/문자에 붙여넣기 하세요)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="w-4 h-4" />
+                          <span>📋 리포트 텍스트 복사하기 (카카오톡 전송용)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* 2. 모바일 OS 공유창 열기 */}
+                    <button
+                      type="button"
+                      onClick={() => handleNativeShare(sharingReportResult, reportText)}
+                      className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-850 border border-zinc-750 text-zinc-200 font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition-all"
+                    >
+                      <span>💬 SNS / 메시지 앱으로 바로 보내기</span>
+                    </button>
+
+                    {/* 3. 워터마크 이미지 파일 다운로드 */}
+                    <button
+                      type="button"
+                      onClick={() => handleShareOrDownloadItem(sharingReportResult)}
+                      className="w-full py-2.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all"
+                    >
+                      <Download className="w-3.5 h-3.5 text-amber-400" />
+                      <span>제안서 완성 이미지 파일 저장</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

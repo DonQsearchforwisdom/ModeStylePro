@@ -103,8 +103,8 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
     const videoWidth = video.videoWidth || 640;
     const videoHeight = video.videoHeight || 480;
     
-    // 모바일 리사이징 해상도에 비례하게 캡처 크기 연산
-    const targetMaxDim = isMobile ? 500 : 800;
+    // 512x512 해상도에 비례하게 캡처 크기 연산
+    const targetMaxDim = 512;
     let width = videoWidth;
     let height = videoHeight;
     
@@ -180,8 +180,8 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
       return;
     }
 
-    // 모바일 환경 OOM 예방을 위해 해상도 제한 이원화 (모바일 500px / PC 800px)
-    const targetMaxDim = isMobile ? 500 : 800;
+    // 512x512 규격에 맞춰 최대 해상도 512px로 정밀 리사이징
+    const targetMaxDim = 512;
 
     // 리사이징 계산 헬퍼 함수
     const getResizedDimensions = (srcWidth: number, srcHeight: number, maxDim = targetMaxDim) => {
