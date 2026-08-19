@@ -2,6 +2,35 @@
 
 import React, { useState, useRef, DragEvent, ChangeEvent, useEffect } from 'react';
 
+// Stability AI SDXL이 지원하는 공식 해상도 규격 및 비율 리스트
+const SDXL_RESOLUTIONS = [
+  { w: 1024, h: 1024, ratio: 1.0 },
+  { w: 1152, h: 896,  ratio: 1152 / 896 },
+  { w: 1216, h: 832,  ratio: 1216 / 832 },
+  { w: 1344, h: 768,  ratio: 1344 / 768 },
+  { w: 1536, h: 640,  ratio: 1536 / 640 },
+  { w: 640,  h: 1536, ratio: 640 / 1536 },
+  { w: 768,  h: 1344, ratio: 768 / 1344 },
+  { w: 832,  h: 1216, ratio: 832 / 1216 },
+  { w: 896,  h: 1152, ratio: 896 / 1152 }
+];
+
+// 업로드된 이미지 종횡비와 가장 흡사한 SDXL 규격 해상도를 반환하는 함수
+const findClosestSDXLResolution = (srcWidth: number, srcHeight: number) => {
+  const srcRatio = srcWidth / srcHeight;
+  let bestMatch = SDXL_RESOLUTIONS[0];
+  let minDiff = Math.abs(srcRatio - bestMatch.ratio);
+
+  for (let i = 1; i < SDXL_RESOLUTIONS.length; i++) {
+    const diff = Math.abs(srcRatio - SDXL_RESOLUTIONS[i].ratio);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestMatch = SDXL_RESOLUTIONS[i];
+    }
+  }
+  return bestMatch;
+};
+
 interface ImageUploaderProps {
   onImageSelected: (base64Image: string) => void;
   onClear: () => void;
@@ -94,43 +123,46 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
     };
   }, []);
 
-  // 사진 프레임 캡처 후 썸네일 변환 및 메모리 수거
+  // 사진 프레임 캡처 후 SDXL 규격에 맞춰 썸네일 변환 및 메모리 수거
   const capturePhoto = () => {
     if (!videoRef.current) return;
 
     const video = videoRef.current;
-    const canvas = document.createElement('canvas');
     const videoWidth = video.videoWidth || 640;
     const videoHeight = video.videoHeight || 480;
     
-    // 512x512 해상도에 비례하게 캡처 크기 연산
-    const targetMaxDim = 512;
-    let width = videoWidth;
-    let height = videoHeight;
+    // Stability AI SDXL이 지원하는 가장 최적의 종횡비 규격을 가져옵니다.
+    const targetRes = findClosestSDXLResolution(videoWidth, videoHeight);
     
-    if (width > height) {
-      if (width > targetMaxDim) {
-        height = Math.round((height * targetMaxDim) / width);
-        width = targetMaxDim;
-      }
-    } else {
-      if (height > targetMaxDim) {
-        width = Math.round((width * targetMaxDim) / height);
-        height = targetMaxDim;
-      }
-    }
-
-    canvas.width = width;
-    canvas.height = height;
+    const canvas = document.createElement('canvas');
+    canvas.width = targetRes.w;
+    canvas.height = targetRes.h;
 
     const ctx = canvas.getContext('2d');
     if (ctx) {
       // 전면 셀카 촬영 시 거울 반전(Mirror Effect) 드로잉 적용
       if (cameraFacing === 'user') {
-        ctx.translate(width, 0);
+        ctx.translate(targetRes.w, 0);
         ctx.scale(-1, 1);
       }
-      ctx.drawImage(video, 0, 0, width, height);
+
+      // 종횡비 계산 및 Center Crop & Scale 드로잉
+      const srcRatio = videoWidth / videoHeight;
+      const targetRatio = targetRes.w / targetRes.h;
+      let drawW = targetRes.w;
+      let drawH = targetRes.h;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      if (srcRatio > targetRatio) {
+        drawW = targetRes.h * srcRatio;
+        offsetX = (targetRes.w - drawW) / 2;
+      } else {
+        drawH = targetRes.w / srcRatio;
+        offsetY = (targetRes.h - drawH) / 2;
+      }
+
+      ctx.drawImage(video, offsetX, offsetY, drawW, drawH);
       
       if (cameraFacing === 'user') {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -203,14 +235,32 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
 
     // 리사이징 후 콜백 호출 및 캔버스 정리 헬퍼 함수
     const drawAndCallback = (source: HTMLImageElement | ImageBitmap, srcWidth: number, srcHeight: number) => {
-      const { width, height } = getResizedDimensions(srcWidth, srcHeight);
+      // Stability AI SDXL이 지원하는 가장 최적의 종횡비 규격을 가져옵니다.
+      const targetRes = findClosestSDXLResolution(srcWidth, srcHeight);
+      
       let canvas: HTMLCanvasElement | null = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = targetRes.w;
+      canvas.height = targetRes.h;
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.drawImage(source, 0, 0, width, height);
+        // 종횡비 계산 및 Center Crop & Scale 드로잉 (찌그러짐 방지)
+        const srcRatio = srcWidth / srcHeight;
+        const targetRatio = targetRes.w / targetRes.h;
+        let drawW = targetRes.w;
+        let drawH = targetRes.h;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (srcRatio > targetRatio) {
+          drawW = targetRes.h * srcRatio;
+          offsetX = (targetRes.w - drawW) / 2;
+        } else {
+          drawH = targetRes.w / srcRatio;
+          offsetY = (targetRes.h - drawH) / 2;
+        }
+
+        ctx.drawImage(source, offsetX, offsetY, drawW, drawH);
         // 퀄리티 0.75로 JPG base64 변환 (용량 다이어트)
         const resizedBase64 = canvas.toDataURL('image/jpeg', 0.75);
         onImageSelected(resizedBase64);
