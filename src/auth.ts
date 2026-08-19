@@ -74,8 +74,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           (session as any).user.totalPlanCredits = userCredit.totalPlanCredits;
           (session as any).user.userPlan = userCredit.userPlan;
         } else {
-          (session as any).user.remainingCredits = 5;
-          (session as any).user.totalPlanCredits = 5;
+          (session as any).user.remainingCredits = 3;
+          (session as any).user.totalPlanCredits = 3;
           (session as any).user.userPlan = '무료체험';
         }
       }
@@ -91,8 +91,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           await db.userCredit.create({
             data: {
               userId: user.id,
-              remainingCredits: 5,
-              totalPlanCredits: 5,
+              remainingCredits: 3,
+              totalPlanCredits: 3,
               userPlan: '무료체험',
             },
           });

@@ -212,7 +212,7 @@ const nativeBridge = {
           const res = await (window as any).webkit.messageHandlers.keychainHandler.postMessage({
             action: 'checkInitFreeCredits'
           });
-          return res || { initialized: true, credits: 5 };
+          return res || { initialized: true, credits: 3 };
         }
         // Android EncryptedSharedPreferences 연동 시뮬레이션
         if ((window as any).AndroidSecureStorage) {
@@ -229,10 +229,10 @@ const nativeBridge = {
       const initialized = localStorage.getItem('free_credits_initialized') === 'true';
       if (!initialized) {
         localStorage.setItem('free_credits_initialized', 'true');
-        localStorage.setItem('credits_remaining', '5');
+        localStorage.setItem('credits_remaining', '3');
         localStorage.setItem('user_plan', '무료체험');
-        localStorage.setItem('total_plan_credits', '5');
-        return { initialized: true, credits: 5 };
+        localStorage.setItem('total_plan_credits', '3');
+        return { initialized: true, credits: 3 };
       }
       const savedCredits = parseInt(localStorage.getItem('credits_remaining') || '0', 10);
       return { initialized: false, credits: savedCredits };
@@ -244,12 +244,12 @@ const nativeBridge = {
   // 크레딧 데이터 획득
   getCreditsData: () => {
     if (typeof window !== 'undefined' && window.localStorage) {
-      const remaining = parseInt(localStorage.getItem('credits_remaining') || '5', 10);
-      const total = parseInt(localStorage.getItem('total_plan_credits') || '5', 10);
+      const remaining = parseInt(localStorage.getItem('credits_remaining') || '3', 10);
+      const total = parseInt(localStorage.getItem('total_plan_credits') || '3', 10);
       const plan = (localStorage.getItem('user_plan') as any) || '무료체험';
       return { remaining, total, plan };
     }
-    return { remaining: 5, total: 5, plan: '무료체험' as const };
+    return { remaining: 3, total: 3, plan: '무료체험' as const };
   },
 
   // 크레딧 데이터 저장
@@ -300,7 +300,7 @@ const nativeBridge = {
       setTimeout(() => {
         if (typeof window !== 'undefined' && window.localStorage) {
           const plan = localStorage.getItem('last_purchased_plan') || '무료체험';
-          const total = plan === '살롱' ? 1000 : plan === '라이트' ? 300 : plan === '1회충전' ? 30 : 5;
+          const total = plan === '살롱' ? 1000 : plan === '라이트' ? 300 : plan === '1회충전' ? 10 : 3;
           const remaining = total;
           localStorage.setItem('credits_remaining', remaining.toString());
           localStorage.setItem('total_plan_credits', total.toString());
@@ -335,7 +335,7 @@ const nativeBridge = {
 
     return new Promise((resolve) => {
       setTimeout(() => {
-        const total = planType === '살롱' ? 1000 : planType === '라이트' ? 300 : 30;
+        const total = planType === '살롱' ? 1000 : planType === '라이트' ? 300 : 10;
         if (typeof window !== 'undefined' && window.localStorage) {
           localStorage.setItem('last_purchased_plan', planType);
           localStorage.setItem('credits_remaining', total.toString());
@@ -642,8 +642,8 @@ export default function HomePage() {
   useEffect(() => {
     if (status === 'authenticated' && session?.user) {
       const sUser = session.user as any;
-      setRemainingCredits(sUser.remainingCredits ?? 5);
-      setTotalPlanCredits(sUser.totalPlanCredits ?? 5);
+      setRemainingCredits(sUser.remainingCredits ?? 3);
+      setTotalPlanCredits(sUser.totalPlanCredits ?? 3);
       setUserPlan(sUser.userPlan ?? '무료체험');
     } else if (status === 'unauthenticated') {
       const data = nativeBridge.getCreditsData();
@@ -864,9 +864,9 @@ export default function HomePage() {
       return;
     }
 
-    let price = 5000;
-    let credits = 30;
-    let total = 30;
+    let price = 3000;
+    let credits = 10;
+    let total = 10;
 
     if (planType === '라이트') {
       price = 29000;
@@ -959,7 +959,7 @@ export default function HomePage() {
 
       // 2. 공통 스토리지 업데이트 및 무료체험 복귀 (기존 잔여 크레딧은 보존)
       setUserPlan('무료체험');
-      nativeBridge.saveCreditsData(remainingCredits, 5, '무료체험');
+      nativeBridge.saveCreditsData(remainingCredits, 3, '무료체험');
 
       alert('🔒 구독 요금제가 정상적으로 해지되었으며, 기본 [무료 체험] 플랜으로 안전하게 전환되었습니다. 남은 크레딧은 계속 사용하실 수 있습니다.');
       setShowBillingModal(false);
@@ -1553,10 +1553,10 @@ export default function HomePage() {
               >
                 <div className="space-y-0.5">
                   <span className="text-xs font-bold text-zinc-200">1회 충전 🎟️</span>
-                  <p className="text-[10px] text-zinc-500">30회 시뮬레이션 제공 (장당 166원 상당)</p>
+                  <p className="text-[10px] text-zinc-500">10회 시뮬레이션 제공 (장당 300원 상당)</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">5,000원 결제</span>
+                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">3,000원 결제</span>
                 </div>
               </div>
 
@@ -1626,7 +1626,7 @@ export default function HomePage() {
                   <span className="text-2xl">🎀</span>
                 </div>
                 <div className="space-y-2">
-                  <h3 className="font-extrabold text-lg text-white">무료 체험 5회를 모두 사용하셨습니다!</h3>
+                  <h3 className="font-extrabold text-lg text-white">무료 체험 3회를 모두 사용하셨습니다!</h3>
                   <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">
                     {"헤어 스타일 시뮬레이션이 마음에 드셨나요?\n지속적인 스타일 탐색을 위해 원하시는 플랜을 선택해 주세요."}
                   </p>
@@ -1637,7 +1637,7 @@ export default function HomePage() {
                     onClick={() => handlePurchasePlan('1회충전')}
                     className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-xs sm:text-sm hover:scale-[1.02] transition-all shadow-md"
                   >
-                    5,000원으로 30회 시작하기
+                    3,000원으로 10회 시작하기
                   </button>
                   <button
                     type="button"
@@ -1664,9 +1664,9 @@ export default function HomePage() {
                   <span className="text-2xl">🎟️</span>
                 </div>
                 <div className="space-y-2">
-                  <h3 className="font-extrabold text-lg text-white">30회를 모두 소진하셨습니다!</h3>
+                  <h3 className="font-extrabold text-lg text-white">10회를 모두 소진하셨습니다!</h3>
                   <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">
-                    {"30회 추가 충전(5,000원)을 하거나, 더 저렴한 구독 요금제로 전환해 보세요."}
+                    {"10회 추가 충전(3,000원)을 하거나, 더 저렴한 구독 요금제로 전환해 보세요."}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2.5 pt-2">
@@ -1675,7 +1675,7 @@ export default function HomePage() {
                     onClick={() => handlePurchasePlan('1회충전')}
                     className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-xs sm:text-sm hover:scale-[1.02] transition-all shadow-md"
                   >
-                    5,000원 추가 충전
+                    3,000원 추가 충전 (10회)
                   </button>
                   <button
                     type="button"
