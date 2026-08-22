@@ -2220,9 +2220,8 @@ export default function HomePage() {
                                   <p className={`text-xs leading-normal max-w-xs ${isChecked ? 'text-amber-300 font-medium' : 'text-zinc-300'}`}>{rec.reason}</p>
                                   {rec.recommendedOutfit && (
                                     <div className="pt-0.5">
-                                      <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold inline-flex items-center gap-1 ${
-                                        isChecked ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-zinc-950 text-zinc-400 border border-zinc-800'
-                                      }`}>
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-md font-semibold inline-flex items-center gap-1 ${isChecked ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-zinc-950 text-zinc-400 border border-zinc-800'
+                                        }`}>
                                         👗 <strong>추천 코디:</strong> {rec.recommendedOutfit}
                                       </span>
                                     </div>
@@ -2415,11 +2414,10 @@ export default function HomePage() {
                   </div>
                   <div className="space-y-0.5">
                     <div className="text-xs sm:text-sm font-bold text-zinc-100 flex items-center gap-2">
-                      <span>헤어 맞춤 의상 코디 함께 변환</span>
-                      <span className={`text-[10px] font-extrabold px-2 py-0.2 rounded-full ${
-                        enableOutfitStyling ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-800 text-zinc-500'
-                      }`}>
-                        {enableOutfitStyling ? 'ON (추천)' : 'OFF'}
+                      <span>헤어 맞춤 의상 코디</span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.2 rounded-full ${enableOutfitStyling ? 'bg-amber-400 text-zinc-950' : 'bg-zinc-800 text-zinc-500'
+                        }`}>
+                        {enableOutfitStyling ? 'ON(추천)' : 'OFF'}
                       </span>
                     </div>
                     <p className="text-[11px] text-zinc-400">
@@ -2428,12 +2426,10 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className={`w-12 h-6.5 rounded-full transition-colors relative p-0.5 shrink-0 flex items-center ${
-                  enableOutfitStyling ? 'bg-amber-400' : 'bg-zinc-800'
-                }`}>
-                  <div className={`w-5.5 h-5.5 rounded-full bg-zinc-950 transition-transform shadow-md ${
-                    enableOutfitStyling ? 'translate-x-5.5' : 'translate-x-0'
-                  }`} />
+                <div className={`w-12 h-6.5 rounded-full transition-colors relative p-0.5 shrink-0 flex items-center ${enableOutfitStyling ? 'bg-amber-400' : 'bg-zinc-800'
+                  }`}>
+                  <div className={`w-5.5 h-5.5 rounded-full bg-zinc-950 transition-transform shadow-md ${enableOutfitStyling ? 'translate-x-5.5' : 'translate-x-0'
+                    }`} />
                 </div>
               </div>
 
@@ -2554,16 +2550,14 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => setActiveProposalId('all')}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all duration-200 border ${
-                    activeProposalId === 'all'
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all duration-200 border ${activeProposalId === 'all'
                       ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/30'
                       : 'bg-zinc-900/90 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850'
-                  }`}
+                    }`}
                 >
                   <span>✨ 전체 모아보기</span>
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    activeProposalId === 'all' ? 'bg-amber-400 text-zinc-950 font-extrabold' : 'bg-zinc-800 text-zinc-400'
-                  }`}>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${activeProposalId === 'all' ? 'bg-amber-400 text-zinc-950 font-extrabold' : 'bg-zinc-800 text-zinc-400'
+                    }`}>
                     {resultsList.length}
                   </span>
                 </button>
@@ -2576,11 +2570,10 @@ export default function HomePage() {
                       key={res.id}
                       type="button"
                       onClick={() => setActiveProposalId(res.id)}
-                      className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all duration-200 border ${
-                        isSelected
+                      className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all duration-200 border ${isSelected
                           ? 'bg-amber-400/20 border-amber-400 text-white shadow-lg ring-2 ring-amber-400/40'
                           : 'bg-zinc-900/90 border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 hover:bg-zinc-850'
-                      }`}
+                        }`}
                     >
                       {/* 미니 썸네일 */}
                       <div className="w-7 h-7 rounded-lg overflow-hidden border border-zinc-700 shrink-0 bg-zinc-800">
@@ -2757,7 +2750,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const target = activeProposalId !== 'all' 
+                    const target = activeProposalId !== 'all'
                       ? resultsList.find(r => r.id === activeProposalId) || resultsList[0]
                       : resultsList[0];
                     handleShareFullReport(target);
@@ -3004,11 +2997,10 @@ ${sharingReportResult.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨
                     <button
                       type="button"
                       onClick={() => handleCopyReportText(reportText)}
-                      className={`w-full py-3.5 px-4 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${
-                        isCopiedReport
+                      className={`w-full py-3.5 px-4 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${isCopiedReport
                           ? 'bg-emerald-500 text-white shadow-emerald-500/20'
                           : 'gold-bg-gradient text-zinc-950 shadow-amber-400/20 hover:opacity-95'
-                      }`}
+                        }`}
                     >
                       {isCopiedReport ? (
                         <>
@@ -3178,11 +3170,10 @@ ${res.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨을 살려 손�
                     <button
                       type="button"
                       onClick={() => handleCopyCombinedReportText(combinedText)}
-                      className={`w-full py-3 px-4 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] border ${
-                        isCopiedCombinedReport
+                      className={`w-full py-3 px-4 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] border ${isCopiedCombinedReport
                           ? 'bg-emerald-500 text-white border-emerald-400 shadow-emerald-500/20'
                           : 'bg-zinc-900 hover:bg-zinc-850 border-zinc-750 text-zinc-200'
-                      }`}
+                        }`}
                     >
                       {isCopiedCombinedReport ? (
                         <>
