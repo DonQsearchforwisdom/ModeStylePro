@@ -42,54 +42,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 서버 환경변수에서 API 키 획득
-    let apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+    // 1단계 진단 전용 100% 무료 API 키 우선 획득 및 다중 순환
+    const apiKeys = (() => {
+      const diagnoseKeys = process.env.GEMINI_DIAGNOSE_KEYS || '';
+      const multiKeys = process.env.GEMINI_API_KEYS || '';
+      const singleKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+      const rawKeys = [...diagnoseKeys.split(','), ...multiKeys.split(','), singleKey].map(k => k.trim()).filter(k => k.length > 0);
+      return Array.from(new Set(rawKeys));
+    })();
     
-    // Vercel 환경 변수 권한 누락 및 이전 무효화된 키가 물려있는 현상을 우회하기 위해 복호화 폴백 수행
-    const fallbackBase64 = 'QVEuQWI4Uk42SWZUUVNKdWE4SjFsdVZVLTRNZWlHeEhNYkdtcTg2LVpjcjloakdzaWVGRmc=';
-    let validNewKey = '';
-    try {
-      validNewKey = Buffer.from(fallbackBase64, 'base64').toString('ascii').trim();
-    } catch (e) {
-      console.warn('Fallback key decoding failed:', e);
-    }
-
-    if (!apiKey) {
-      apiKey = validNewKey;
-    }
-    
-    if (!apiKey) {
+    if (apiKeys.length === 0) {
       return NextResponse.json(
         { error: '서버 AI 서비스 키(GEMINI_API_KEY)가 설정되지 않았습니다. 관리자에게 문의해 주세요.' },
         { status: 500 }
       );
     }
-
-    // IP 제한 검증 (하루 15회 방어 제한 - 개발 테스트를 위해 비활성화)
-    /*
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || request.headers.get('x-real-ip') || 'unknown-ip';
-    const today = new Date().toISOString().split('T')[0];
-
-    const limitInfo = ipLimitMap.get(ip);
-
-    if (limitInfo) {
-      if (limitInfo.date === today) {
-        if (limitInfo.count >= 15) {
-          return NextResponse.json(
-            { error: '오늘 일일 무료 헤어 진단 제한(15회)을 초과했습니다. 내일 다시 시도해 주세요.' },
-            { status: 429 }
-          );
-        }
-        limitInfo.count += 1;
-      } else {
-        limitInfo.date = today;
-        limitInfo.count = 1;
-      }
-      ipLimitMap.set(ip, limitInfo);
-    } else {
-      ipLimitMap.set(ip, { count: 1, date: today });
-    }
-    */
 
     // base64 이미지 디코딩
     const match = image.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
@@ -110,25 +77,32 @@ export async function POST(request: NextRequest) {
       ? ['숏컷', '단발', '미디움', '롱', '특수 레이어드']
       : ['숏', '미디움 숏', '미디움', '롱 / 특수'];
 
-    // 프롬프트 작성 - 구조적 JSON 요청 (헤어 및 어울리는 의상 스타일링 동시 제안)
-    const instruction = `You are an elite salon hair master and personal fashion stylist / visual image consultant. 
-Analyze this photo of a ${gender} customer's face, head shape, facial features, and hair condition.
-Then, diagnose, detect length, and recommend exactly TOP 3 customized hair styles along with perfectly harmonizing fashion outfits (추천 의상 / 코디) that elevate the customer's look. You do NOT need to restrict yourself to a predefined list. Recommend creative and stylish hairstyles (e.g., "볼륨 셋팅 빌드펌", "시스루 레이어드 단발", "내추럴 드롭컷 & 가일" etc.).
+    // 프롬프트 작성 - 구조적 JSON 요청 (성별 자동 감지, 헤어 및 어울리는 의상 스타일링 동시 제안)
+    const instruction = `You are an elite salon hair master and personal fashion stylist / visual image consultant.
+CRITICAL FIRST STEP: Look closely at the uploaded customer photo and accurately detect the customer's actual visual/biological gender: "여성" or "남성". (Even if the initial client hint is '${gender}', ALWAYS prioritize the actual visual features in the photo to determine "detectedGender": "여성" or "남성").
 
-CRITICAL REQUIREMENT: Among the TOP 3 recommended hairstyles, EXACTLY ONE recommended style MUST be a bold haircut that dramatically shortens and organizes the hair length (e.g., if the customer has long or medium hair, recommend a chic shortcut, a cool tassel bob (단발 태슬컷), or a short crop cut. If they already have short hair, suggest an ultra-short tidy cut or pixel crop). You must explicitly state in the "reason" field that this style is a bold length transformation for a fresh look, using phrases like '과감한 기장 정리', '단발 변신', '숏컷 변신', or '과감한 기장 컷트'.
+Based on the detected gender:
+1. Analyze the customer's face shape (얼굴형), head shape (두상), facial features, and hair condition (모질 및 모발 상태).
+2. Detect the customer's current hair length from:
+   - For female ("여성"): ['숏컷', '단발', '미디움', '롱', '특수 레이어드']
+   - For male ("남성"): ['숏', '미디움 숏', '미디움', '롱 / 특수']
+3. Recommend exactly TOP 3 customized hairstyles and perfectly harmonizing fashion outfits (추천 의상 / 코디) suited for the detected gender that elevate the customer's look. You do NOT need to restrict yourself to a predefined list. Recommend creative and stylish hairstyles.
+
+CRITICAL REQUIREMENT: Among the TOP 3 recommended hairstyles, EXACTLY ONE recommended style MUST be a bold haircut that dramatically shortens and organizes the hair length (e.g., if the customer has long/medium hair, recommend a chic shortcut, a cool tassel bob (단발 태슬컷), or a short crop cut. If they already have short hair, suggest an ultra-short tidy cut). You must explicitly state in the "reason" field that this style is a bold length transformation for a fresh look, using phrases like '과감한 기장 정리', '단발 변신', '숏컷 변신', or '과감한 기장 컷트'.
 
 Return the response in raw JSON format matching this structure:
 {
+  "detectedGender": "여성" or "남성",
   "faceShape": "얼굴형 분석 결과 (e.g. 계란형, 둥근형, 각진형, 긴 얼굴형, 역삼각형 등)",
   "hairCondition": "두상 및 모질 상태 진단 내용 (e.g. 정수리 볼륨이 가라앉고 모발 끝 손상도가 다소 높음, 뜨는 옆머리 보완 필요 등)",
-  "currentLength": "Analyze the customer's current hair length and match EXACTLY one string from this list only: [${lengths.join(', ')}]. Do not output other words.",
+  "currentLength": "Analyze the customer's current hair length and match EXACTLY one string from the appropriate gender list above. Do not output other words.",
   "recommendations": [
     {
       "styleName": "추천 헤어 스타일의 이름 (자유롭게 작명한 세련된 한글 스타일 이름)",
       "reason": "이 스타일이 얼굴형 및 두상에 어울리는 구체적인 사유 및 이를 통한 프리미엄 시술 권장 팁 (한국어로 자연스럽게 작성)",
       "recommendedOutfit": "이 헤어 스타일과 최상의 조화를 이루는 추천 의상/코디 룩 (e.g., '프렌치 시크 차콜 블레이저 & 슬림핏 슬랙스', '모던 미니멀 옥스포드 셔츠 & 니트 베스트', '우아한 페미닌 캐시미어 니트 & 롱스커트' 등 한국어로 작성)",
       "stylingTip": "이 스타일의 구체적인 홈 스타일링 및 관리 방법. 머리를 말릴 때 손질 방향이나 드라이 요령, 헤어 제품(컬크림, 에센스, 왁스 등) 도포 가이드를 포함하여 한국어로 아주 상세하게 작성",
-      "hiddenPrompt": "A highly detailed English image generation prompt (without markdown) to redesign both the hair and the clothing of the customer. IMPORTANT: You must create a complete total-makeover transformation prompt. 1) Describe the exact styling, texture, bounce, and volume of the target hair style. 2) Redesign and upgrade the customer's clothing into a chic, fashionable, well-fitted outfit that perfectly coordinates with this specific hairstyle (e.g. tailored chic blazer, cozy aesthetic knitwear, sleek collar shirt, stylish jacket). 3) Apply natural elegant makeup or neat male grooming. Keep the customer's original face, eyes, eyebrows, nose, lips, facial structure, skin texture, age, expression, and identity faithfully preserved. Photorealistic, professional studio lighting, 8k resolution, healthy hair shine."
+      "hiddenPrompt": "A highly detailed English image generation prompt (without markdown) to redesign both the hair and the clothing of the customer. IMPORTANT: You must create a complete total-makeover transformation prompt. 1) Describe the exact styling, texture, bounce, and volume of the target hair style. 2) Redesign and upgrade the customer's clothing into a chic, fashionable, well-fitted outfit that perfectly coordinates with this specific hairstyle. 3) Apply natural elegant makeup or neat male grooming matching the detected gender. Keep the customer's original face, eyes, eyebrows, nose, lips, facial structure, skin texture, age, expression, and identity faithfully preserved. Photorealistic, professional studio lighting, 8k resolution, healthy hair shine."
     }
   ]
 }
@@ -140,36 +114,50 @@ Make sure all text fields (except hiddenPrompt which must be in English) are wri
       delete process.env.GOOGLE_API_KEY;
     }
 
-    let res;
+    let res: any = null;
     try {
-      const ai = new GoogleGenAI({ apiKey });
-      try {
-        res = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { inlineData: { mimeType, data: base64Image } },
-                { text: instruction }
+      for (let i = 0; i < apiKeys.length; i++) {
+        const currentKey = apiKeys[i];
+        try {
+          const ai = new GoogleGenAI({ apiKey: currentKey });
+          try {
+            res = await ai.models.generateContent({
+              model: 'gemini-3.6-flash',
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    { inlineData: { mimeType, data: base64Image } },
+                    { text: instruction }
+                  ]
+                }
               ]
+            });
+            if (res?.candidates?.[0]?.content?.parts?.[0]?.text) {
+              break;
             }
-          ]
-        });
-      } catch (firstModelErr) {
-        console.warn('gemini-3.6-flash failed, attempting gemini-pro-latest fallback:', firstModelErr);
-        res = await ai.models.generateContent({
-          model: 'gemini-pro-latest',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { inlineData: { mimeType, data: base64Image } },
-                { text: instruction }
+          } catch (firstModelErr) {
+            console.warn(`[Diagnose Failover] Key #${i + 1} gemini-3.6-flash failed, attempting fallback:`, firstModelErr);
+            res = await ai.models.generateContent({
+              model: 'gemini-pro-latest',
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    { inlineData: { mimeType, data: base64Image } },
+                    { text: instruction }
+                  ]
+                }
               ]
+            });
+            if (res?.candidates?.[0]?.content?.parts?.[0]?.text) {
+              break;
             }
-          ]
-        });
+          }
+        } catch (keyErr) {
+          console.warn(`[Diagnose Failover] Key #${i + 1} failed, trying next key:`, keyErr);
+          continue;
+        }
       }
     } finally {
       // 원래 환경변수 복구
@@ -178,7 +166,7 @@ Make sure all text fields (except hiddenPrompt which must be in English) are wri
       }
     }
 
-    const responseText = res.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const responseText = res?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
     // JSON 응답 정제 및 파싱
     let jsonString = responseText.trim();
@@ -190,7 +178,13 @@ Make sure all text fields (except hiddenPrompt which must be in English) are wri
     }
 
     try {
+      if (!jsonString) {
+        throw new Error('Empty response from AI diagnosis model');
+      }
       const parsedData = JSON.parse(jsonString);
+      if (parsedData.detectedGender !== '여성' && parsedData.detectedGender !== '남성') {
+        parsedData.detectedGender = gender;
+      }
       return NextResponse.json(parsedData);
     } catch (parseErr) {
       console.error('Failed to parse Gemini JSON:', responseText);
@@ -242,6 +236,7 @@ Make sure all text fields (except hiddenPrompt which must be in English) are wri
       ];
 
       return NextResponse.json({
+        detectedGender: gender,
         faceShape: '분석 중 얼굴형 감지 보류',
         hairCondition: '모발 진단 데이터 렌더링 지연',
         currentLength: lengths[1] || '단발',

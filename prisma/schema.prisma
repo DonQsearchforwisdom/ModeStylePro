@@ -66,8 +66,8 @@ model UserCredit {
   id               String   @id @default(cuid())
   userId           String   @unique
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  remainingCredits Int      @default(5)
-  totalPlanCredits Int      @default(5)
+  remainingCredits Int      @default(3)
+  totalPlanCredits Int      @default(3)
   userPlan         String   @default("무료체험")
   updatedAt        DateTime @updatedAt
 }

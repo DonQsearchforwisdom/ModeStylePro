@@ -212,8 +212,8 @@ export default function ImageUploader({ onImageSelected, onClear, previewImage }
       return;
     }
 
-    // 512x512 규격에 맞춰 최대 해상도 512px로 정밀 리사이징
-    const targetMaxDim = 512;
+    // 1024x1024 고화질 규격에 맞춰 최대 해상도 1024px로 정밀 리사이징
+    const targetMaxDim = 1024;
 
     // 리사이징 계산 헬퍼 함수
     const getResizedDimensions = (srcWidth: number, srcHeight: number, maxDim = targetMaxDim) => {

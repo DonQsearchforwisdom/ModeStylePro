@@ -19,7 +19,6 @@ export default function RootLayout({
         <SessionProvider>
           {children}
         </SessionProvider>
-        <Script src="https://js.tosspayments.com/v1/payment" strategy="lazyOnload" />
       </body>
     </html>
   );

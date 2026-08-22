@@ -12,6 +12,7 @@
     "@auth/prisma-adapter": "^2.11.3",
     "@google/genai": "^2.13.0",
     "@prisma/client": "^6.2.1",
+    "@tosspayments/payment-sdk": "^1.9.3",
     "lucide-react": "^1.27.0",
     "next": "16.2.12",
     "next-auth": "^5.0.0-beta.32",

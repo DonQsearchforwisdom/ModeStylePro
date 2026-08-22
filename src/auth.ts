@@ -32,23 +32,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const randomId = Math.random().toString(36).substring(7);
         const email = `test-${randomId}@modestyle.pro`;
 
-        // DB에 가상 테스트 유저 및 크레딧(30회) 자동 생성
-        const user = await db.user.create({
-          data: {
+        try {
+          // DB에 가상 테스트 유저 및 크레딧(30회) 자동 생성 시도
+          const user = await db.user.create({
+            data: {
+              name,
+              email,
+              image: null,
+              credit: {
+                create: {
+                  remainingCredits: 30,
+                  totalPlanCredits: 30,
+                  userPlan: '무료체험',
+                },
+              },
+            },
+          });
+          return user;
+        } catch (dbErr) {
+          // 로컬에 PostgreSQL DB가 실행 중이지 않은 경우 가상 유저 객체 즉시 생성
+          return {
+            id: `virtual-test-user-${randomId}`,
             name,
             email,
             image: null,
-            credit: {
-              create: {
-                remainingCredits: 30,
-                totalPlanCredits: 30,
-                userPlan: '무료체험',
-              },
-            },
-          },
-        });
-
-        return user;
+          };
+        }
       },
     }),
   ],
@@ -64,18 +73,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const userId = token.id as string;
         session.user.id = userId;
 
-        // DB에서 유저의 크레딧 현황을 조회하여 세션에 주입
-        const userCredit = await db.userCredit.findUnique({
-          where: { userId },
-        });
+        try {
+          // DB에서 유저의 크레딧 현황을 조회하여 세션에 주입
+          const userCredit = await db.userCredit.findUnique({
+            where: { userId },
+          });
 
-        if (userCredit) {
-          (session as any).user.remainingCredits = userCredit.remainingCredits;
-          (session as any).user.totalPlanCredits = userCredit.totalPlanCredits;
-          (session as any).user.userPlan = userCredit.userPlan;
-        } else {
-          (session as any).user.remainingCredits = 3;
-          (session as any).user.totalPlanCredits = 3;
+          if (userCredit) {
+            (session as any).user.remainingCredits = userCredit.remainingCredits;
+            (session as any).user.totalPlanCredits = userCredit.totalPlanCredits;
+            (session as any).user.userPlan = userCredit.userPlan;
+          } else {
+            (session as any).user.remainingCredits = 30;
+            (session as any).user.totalPlanCredits = 30;
+            (session as any).user.userPlan = '무료체험';
+          }
+        } catch (dbErr) {
+          (session as any).user.remainingCredits = 30;
+          (session as any).user.totalPlanCredits = 30;
           (session as any).user.userPlan = '무료체험';
         }
       }

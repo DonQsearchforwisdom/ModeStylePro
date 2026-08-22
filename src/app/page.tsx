@@ -8,6 +8,7 @@ import { Sparkles, ArrowRight, Download, Share2, RefreshCw, Key, ShieldCheck, He
 
 import { STYLE_OPTIONS, LENGTH_OPTIONS, type StyleItem } from '@/data/styleOptions';
 import { saveProposalsToDB, loadProposalsFromDB, clearProposalsFromDB } from '@/utils/indexedDB';
+import { loadTossPayments } from '@tosspayments/payment-sdk';
 
 // 기장 데이터 및 아이콘 정의
 const LENGTH_ICONS: Record<string, string> = {
@@ -35,6 +36,7 @@ const LOADING_MESSAGES = [
 ];
 
 interface DiagnosisResult {
+  detectedGender?: '여성' | '남성';
   faceShape: string;
   hairCondition: string;
   currentLength?: string;
@@ -234,7 +236,13 @@ const nativeBridge = {
         localStorage.setItem('total_plan_credits', '3');
         return { initialized: true, credits: 3 };
       }
-      const savedCredits = parseInt(localStorage.getItem('credits_remaining') || '0', 10);
+      let savedCredits = parseInt(localStorage.getItem('credits_remaining') || '3', 10);
+      const plan = localStorage.getItem('user_plan') || '무료체험';
+      if (plan === '무료체험' && savedCredits > 3) {
+        savedCredits = 3;
+        localStorage.setItem('credits_remaining', '3');
+        localStorage.setItem('total_plan_credits', '3');
+      }
       return { initialized: false, credits: savedCredits };
     }
 
@@ -244,9 +252,29 @@ const nativeBridge = {
   // 크레딧 데이터 획득
   getCreditsData: () => {
     if (typeof window !== 'undefined' && window.localStorage) {
-      const remaining = parseInt(localStorage.getItem('credits_remaining') || '3', 10);
-      const total = parseInt(localStorage.getItem('total_plan_credits') || '3', 10);
+      let remaining = parseInt(localStorage.getItem('credits_remaining') || '3', 10);
+      let total = parseInt(localStorage.getItem('total_plan_credits') || '3', 10);
       const plan = (localStorage.getItem('user_plan') as any) || '무료체험';
+      if (plan === '무료체험') {
+        if (total > 3) {
+          total = 3;
+          localStorage.setItem('total_plan_credits', '3');
+        }
+        if (remaining > 3) {
+          remaining = 3;
+          localStorage.setItem('credits_remaining', '3');
+        }
+      } else if (plan.includes('10') || plan.includes('1회충전')) {
+        if (total > 10 && remaining <= 10) {
+          total = 10;
+          localStorage.setItem('total_plan_credits', '10');
+        }
+      } else if (plan.includes('20')) {
+        if (total > 20 && remaining <= 20) {
+          total = 20;
+          localStorage.setItem('total_plan_credits', '20');
+        }
+      }
       return { remaining, total, plan };
     }
     return { remaining: 3, total: 3, plan: '무료체험' as const };
@@ -300,7 +328,7 @@ const nativeBridge = {
       setTimeout(() => {
         if (typeof window !== 'undefined' && window.localStorage) {
           const plan = localStorage.getItem('last_purchased_plan') || '무료체험';
-          const total = plan === '살롱' ? 1000 : plan === '라이트' ? 300 : plan === '1회충전' ? 10 : 3;
+          const total = plan === '살롱' ? 500 : plan === '라이트' ? 200 : plan.includes('20') || plan.includes('30') ? 20 : plan === '1회충전' ? 10 : 3;
           const remaining = total;
           localStorage.setItem('credits_remaining', remaining.toString());
           localStorage.setItem('total_plan_credits', total.toString());
@@ -314,7 +342,7 @@ const nativeBridge = {
   },
 
   // RevenueCat IAP 결제 처리
-  purchasePlan: async (planType: '1회충전' | '라이트' | '살롱'): Promise<{ success: boolean; credits: number; total: number }> => {
+  purchasePlan: async (planType: string): Promise<{ success: boolean; credits: number; total: number }> => {
     try {
       if (typeof window !== 'undefined') {
         if ((window as any).webkit?.messageHandlers?.revenueCatHandler) {
@@ -335,7 +363,9 @@ const nativeBridge = {
 
     return new Promise((resolve) => {
       setTimeout(() => {
-        const total = planType === '살롱' ? 1000 : planType === '라이트' ? 300 : 10;
+        const total = planType.includes('500') || planType === '살롱' ? 500
+          : planType.includes('200') || planType === '라이트' ? 200
+            : planType.includes('20') || planType.includes('30') ? 20 : 10;
         if (typeof window !== 'undefined' && window.localStorage) {
           localStorage.setItem('last_purchased_plan', planType);
           localStorage.setItem('credits_remaining', total.toString());
@@ -406,7 +436,6 @@ export default function HomePage() {
   };
 
   // 통합 크레딧 및 플랜 상태 관리 (비회원 기기 인증 기반)
-  // 중복 제거를 위해 주석 처리: const [userPlan, setUserPlan] = useState<'무료체험' | '1회충전' | '라이트' | '살롱'>('무료체험');
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
 
@@ -418,19 +447,19 @@ export default function HomePage() {
   // 총 생성 대상 개수 (우측 다중 스타일 선택 개수 + AI 진단 추천 스타일 선택 개수)
   const totalJobsCount = selectedStyles.length + selectedRecommendations.length;
 
-  // 모바일 앱 설정 상태 (상호명, 디자이너명)
+  // 모바일 앱 설정 상태 (상호명, 전화번호, 디자이너명)
   const [salonName, setSalonName] = useState<string>('');
-  const [designerName, setDesignerName] = useState<string>('지오 디자이너');
+  const [phoneNumber, setPhoneNumber] = useState<string>('');
+  const [designerName, setDesignerName] = useState<string>('');
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
   // 샘플 Before/After 시연 성별 선택 상태
   const [sampleGender, setSampleGender] = useState<'여성' | '남성'>('여성');
 
   // 통합 크레딧 및 플랜 상태 관리 (비회원 기기 인증 기반)
-  const [userPlan, setUserPlan] = useState<'무료체험' | '1회충전' | '라이트' | '살롱'>('무료체험');
-  const [remainingCredits, setRemainingCredits] = useState<number>(5);
-  const [totalPlanCredits, setTotalPlanCredits] = useState<number>(5);
-  const [showExhaustedModal, setShowExhaustedModal] = useState<boolean>(false);
+  const [userPlan, setUserPlan] = useState<string>('무료체험');
+  const [remainingCredits, setRemainingCredits] = useState<number>(3);
+  const [totalPlanCredits, setTotalPlanCredits] = useState<number>(3);
   const [showBillingModal, setShowBillingModal] = useState<boolean>(false);
   const [isIosKakao, setIsIosKakao] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
@@ -438,57 +467,56 @@ export default function HomePage() {
 
   // 상단 동적 뱃지 텍스트 렌더링 헬퍼
   const renderCreditBadgeText = () => {
-    // 1. 개발/테스트 모드 (development 환경)
-    if (process.env.NODE_ENV === 'development') {
-      return (
-        <>
-          개발 모드 | <span className="text-amber-400 font-bold">무제한 ♾️</span>
-        </>
-      );
-    }
-
-    // 2. 운영 환경일 때는 유저 플랜 상태에 따라 포맷팅 적용
     const formattedRemaining = remainingCredits.toLocaleString('ko-KR');
     const formattedTotal = totalPlanCredits.toLocaleString('ko-KR');
 
-    switch (userPlan) {
-      case '1회충전':
-        return (
-          <>
-            1회 충전 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
-          </>
-        );
-      case '라이트':
-        return (
-          <>
-            라이트 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
-          </>
-        );
-      case '살롱':
-        return (
-          <>
-            살롱 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
-          </>
-        );
-      case '무료체험':
-      default:
-        return (
-          <>
-            무료 체험 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
-          </>
-        );
+    if (userPlan.includes('20') || userPlan.includes('30')) {
+      return (
+        <>
+          20회 충전 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+        </>
+      );
     }
+    if (userPlan.includes('10') || userPlan.includes('1회충전')) {
+      return (
+        <>
+          1회 충전 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+        </>
+      );
+    }
+    if (userPlan === '라이트') {
+      return (
+        <>
+          라이트 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+        </>
+      );
+    }
+    if (userPlan === '살롱') {
+      return (
+        <>
+          살롱 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+        </>
+      );
+    }
+    return (
+      <>
+        무료 체험 | <span className="text-amber-400 font-bold">{formattedRemaining}/{formattedTotal}</span>
+      </>
+    );
   };
 
   const simulatorRef = useRef<HTMLDivElement>(null);
   const stylesSectionRef = useRef<HTMLDivElement>(null);
   const isRestored = useRef<boolean>(false);
 
-  // 성별 변경 시 기장과 스타일 초기화 및 sessionStorage에 성별 백업
-  useEffect(() => {
+  // 사용자가 수동으로 성별 버튼을 클릭했을 때의 처리 핸들러
+  const handleManualGenderChange = (newGender: '여성' | '남성') => {
+    if (newGender === gender) return;
+    setGender(newGender);
+    setSampleGender(newGender);
     setSelectedLength('전체');
-    setSelectedStyles([STYLE_OPTIONS[gender][0].name]);
-    setSelectedRecommendations([]); // AI 추천 선택 리셋
+    setSelectedStyles([STYLE_OPTIONS[newGender][0].name]);
+    setSelectedRecommendations([]);
     setCustomStyleText('');
     setIsCustomStyleApplied(false);
     safeSessionStorage.removeItem('modestyle_custom_style_text');
@@ -496,6 +524,11 @@ export default function HomePage() {
     setActiveHiddenPrompt(null);
     setDiagnosisResult(null);
     setDiagnosisError(null);
+    safeSessionStorage.setItem('modestyle_gender', newGender);
+  };
+
+  // 성별 변경 시 sessionStorage에 안전 동기화
+  useEffect(() => {
     safeSessionStorage.setItem('modestyle_gender', gender);
   }, [gender]);
 
@@ -540,11 +573,32 @@ export default function HomePage() {
 
   // 로컬스토리지 정보 마운트 시 로드 및 일일 무료 5회 리셋 처리
   useEffect(() => {
-    // 0-1. 성별 정보 복구
-    const savedGender = safeSessionStorage.getItem('modestyle_gender');
-    if (savedGender === '여성' || savedGender === '남성') {
-      setGender(savedGender);
+    // 0. AI 실시간 진단 리포트 복구 먼저 수행
+    let parsedDiagnosis: any = null;
+    const savedDiagnosis = safeSessionStorage.getItem('modestyle_diagnosis_result');
+    if (savedDiagnosis) {
+      try {
+        parsedDiagnosis = JSON.parse(savedDiagnosis);
+        setDiagnosisResult(parsedDiagnosis);
+        // 복구 시 제안 스타일들도 모두 자동 적용 상태로 매핑 복원
+        if (parsedDiagnosis && parsedDiagnosis.recommendations && Array.isArray(parsedDiagnosis.recommendations)) {
+          const defaultRecs = parsedDiagnosis.recommendations.map((r: any) => r.styleName);
+          setSelectedRecommendations(defaultRecs);
+        }
+      } catch (e) {
+        console.error('진단 리포트 세션 복구 실패:', e);
+      }
     }
+
+    // 0-1. 성별 정보 복구 (진단 리포트의 감지 성별 우선 확인)
+    const savedGender = safeSessionStorage.getItem('modestyle_gender');
+    const effectiveGender: '여성' | '남성' = (savedGender === '여성' || savedGender === '남성')
+      ? savedGender
+      : (parsedDiagnosis?.detectedGender === '여성' || parsedDiagnosis?.detectedGender === '남성')
+        ? parsedDiagnosis.detectedGender
+        : '여성';
+    setGender(effectiveGender);
+    setSampleGender(effectiveGender);
 
     // 0-1-2. 직접 요청 스타일 정보 복구
     const savedCustomText = safeSessionStorage.getItem('modestyle_custom_style_text');
@@ -557,44 +611,31 @@ export default function HomePage() {
     }
 
     // 0-1-3. 기장 및 스타일 선택 상태 복구
-    const savedLength = safeSessionStorage.getItem('modestyle_selected_length');
-    if (savedLength) {
-      setSelectedLength(savedLength);
-    } else {
-      setSelectedLength('전체');
-    }
+    const savedLength = safeSessionStorage.getItem('modestyle_selected_length') || parsedDiagnosis?.currentLength || '전체';
+    setSelectedLength(savedLength);
 
     const savedStyles = safeSessionStorage.getItem('modestyle_selected_styles');
     if (savedStyles) {
       try {
-        setSelectedStyles(JSON.parse(savedStyles));
+        const parsedStyles = JSON.parse(savedStyles);
+        const validGenderStyles = STYLE_OPTIONS[effectiveGender].map(s => s.name);
+        const filtered = Array.isArray(parsedStyles) ? parsedStyles.filter((s: string) => validGenderStyles.includes(s)) : [];
+        if (filtered.length > 0) {
+          setSelectedStyles(filtered);
+        } else {
+          setSelectedStyles([STYLE_OPTIONS[effectiveGender][0].name]);
+        }
       } catch (e) {
-        setSelectedStyles([STYLE_OPTIONS[savedGender === '남성' ? '남성' : '여성'][0].name]);
+        setSelectedStyles([STYLE_OPTIONS[effectiveGender][0].name]);
       }
     } else {
-      setSelectedStyles([STYLE_OPTIONS[savedGender === '남성' ? '남성' : '여성'][0].name]);
+      setSelectedStyles([STYLE_OPTIONS[effectiveGender][0].name]);
     }
 
     // 0-2. 업로드된 원본 이미지 복구
     const savedOriginalImage = safeSessionStorage.getItem('modestyle_original_image');
     if (savedOriginalImage) {
       setOriginalImage(savedOriginalImage);
-    }
-
-    // 0-3. AI 실시간 진단 리포트 복구
-    const savedDiagnosis = safeSessionStorage.getItem('modestyle_diagnosis_result');
-    if (savedDiagnosis) {
-      try {
-        const parsed = JSON.parse(savedDiagnosis);
-        setDiagnosisResult(parsed);
-        // 복구 시 제안 스타일들도 모두 자동 적용 상태로 매핑 복원
-        if (parsed && parsed.recommendations && Array.isArray(parsed.recommendations)) {
-          const defaultRecs = parsed.recommendations.map((r: any) => r.styleName);
-          setSelectedRecommendations(defaultRecs);
-        }
-      } catch (e) {
-        console.error('진단 리포트 세션 복구 실패:', e);
-      }
     }
 
     // 0-4. 제안서 목록 IndexedDB 대용량 영구 저장소에서 완전 복구
@@ -636,12 +677,17 @@ export default function HomePage() {
 
     // 1. 살롱 설정 정보 로드
     const savedSalon = safeLocalStorage.getItem('modestyle_salon_name');
-    if (savedSalon) setSalonName(savedSalon);
+    if (savedSalon !== null) setSalonName(savedSalon);
+    const savedPhone = safeLocalStorage.getItem('modestyle_phone_number');
+    if (savedPhone !== null) setPhoneNumber(savedPhone);
     const savedDesigner = safeLocalStorage.getItem('modestyle_designer_name');
-    if (savedDesigner) setDesignerName(savedDesigner);
+    if (savedDesigner !== null) setDesignerName(savedDesigner);
 
     // 2. 기기 식별 기반 최초 무료 크레딧 초기화
     nativeBridge.initializeFreeCredits();
+
+    // 복구 완료 플래그 활성화
+    isRestored.current = true;
   }, []);
 
   // 로그인 세션 상태와 로컬 크레딧 동기화
@@ -712,6 +758,16 @@ export default function HomePage() {
         throw new Error(data.error || '진단 리포트 생성에 실패했습니다.');
       }
 
+      // 사진 분석 결과 성별이 현재 선택된 성별과 다르면 자동 전환
+      const detected = (data.detectedGender === '여성' || data.detectedGender === '남성') ? data.detectedGender : gender;
+      if (detected !== gender) {
+        setGender(detected);
+        setSampleGender(detected);
+        safeSessionStorage.setItem('modestyle_gender', detected);
+        // 해당 성별에 맞는 기본 스타일로 변경
+        setSelectedStyles([STYLE_OPTIONS[detected][0].name]);
+      }
+
       setDiagnosisResult(data);
       // 진단 결과 동기 백업
       safeSessionStorage.setItem('modestyle_diagnosis_result', JSON.stringify(data));
@@ -724,6 +780,8 @@ export default function HomePage() {
 
       if (data.currentLength) {
         setSelectedLength(data.currentLength);
+      } else {
+        setSelectedLength('전체');
       }
     } catch (err: any) {
       console.error(err);
@@ -757,9 +815,11 @@ export default function HomePage() {
   };
 
   // 설정 저장
-  const handleSaveSettings = (name: string, designer: string) => {
+  const handleSaveSettings = (name: string, phone: string, designer: string) => {
     setSalonName(name);
     safeLocalStorage.setItem('modestyle_salon_name', name);
+    setPhoneNumber(phone);
+    safeLocalStorage.setItem('modestyle_phone_number', phone);
     setDesignerName(designer);
     safeLocalStorage.setItem('modestyle_designer_name', designer);
     setShowSettings(false);
@@ -858,37 +918,35 @@ export default function HomePage() {
   };
 
   // 토스페이먼츠 결제창 요청 헬퍼
-  const requestTossPayment = (planType: '1회충전' | '라이트' | '살롱') => {
+  const requestTossPayment = async (planType: string) => {
     if (typeof window === 'undefined') return;
 
-    const clientKey = 'test_ck_D5aZMgN5K3Q1vvJQ8Jqv85bGbR51'; // 토스페이먼츠 공식 테스트 클라이언트 키
-    const tossPayments = (window as any).TossPayments ? (window as any).TossPayments(clientKey) : null;
-
-    if (!tossPayments) {
-      alert('Toss Payments 결제 모듈을 로드하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-      setIsLoading(false);
-      return;
-    }
+    const clientKey = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || 'test_ck_D5aZMgN5K3Q1vvJQ8Jqv85bGbR51'; // 토스페이먼츠 공식 테스트 클라이언트 키
 
     let price = 3000;
     let credits = 10;
     let total = 10;
 
-    if (planType === '라이트') {
+    if (planType.includes('20') || planType.includes('30')) {
+      price = 5000;
+      credits = 20;
+      total = 20;
+    } else if (planType.includes('200') || planType === '라이트') {
       price = 29000;
-      credits = 300;
-      total = 300;
-    } else if (planType === '살롱') {
-      price = 69000;
-      credits = 1000;
-      total = 1000;
+      credits = 200;
+      total = 200;
+    } else if (planType.includes('500') || planType === '살롱') {
+      price = 59000;
+      credits = 500;
+      total = 500;
     }
 
     const successUrl = `${window.location.origin}/payment/success?plan=${encodeURIComponent(planType)}&credits=${credits}&total=${total}`;
     const failUrl = `${window.location.origin}/payment/fail`;
 
     try {
-      tossPayments.requestPayment('카드', {
+      const tossPayments = await loadTossPayments(clientKey);
+      await tossPayments.requestPayment('카드', {
         amount: price,
         orderId: `order-${Math.random().toString(36).substring(2, 11)}-${Date.now()}`,
         orderName: `ModeStyle Pro [${planType}] 요금제 충전`,
@@ -896,21 +954,25 @@ export default function HomePage() {
         successUrl,
         failUrl,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Toss Payments request failed:', err);
-      alert('결제창을 실행하는 중 오류가 발생했습니다.');
+      if (err?.code !== 'USER_CANCEL') {
+        alert('결제창을 실행하는 중 오류가 발생했습니다: ' + (err?.message || '잠시 후 다시 시도해 주세요.'));
+      }
+    } finally {
       setIsLoading(false);
     }
   };
 
   // RevenueCat IAP 플랜 결제 처리 함수
-  const handlePurchasePlan = async (planType: '1회충전' | '라이트' | '살롱') => {
-    setIsLoading(true);
+  const handlePurchasePlan = async (planType: string) => {
     if (!isHybridApp()) {
-      requestTossPayment(planType);
+      setIsLoading(true);
+      await requestTossPayment(planType);
       return;
     }
 
+    setIsLoading(true);
     try {
       const res = await nativeBridge.purchasePlan(planType);
       if (res.success) {
@@ -920,7 +982,6 @@ export default function HomePage() {
         nativeBridge.saveCreditsData(res.credits, res.total, planType);
         alert(`🎉 결제가 완료되어 [${planType}] 요금제(${res.credits}회)가 성공적으로 충전되었습니다!`);
         setShowBillingModal(false);
-        setShowExhaustedModal(false);
       }
     } catch (e) {
       console.error(e);
@@ -1022,7 +1083,7 @@ export default function HomePage() {
         console.log(`[Subscription Reset Success] DB Update -> start: ${billingStart}, end: ${billingEnd}`);
 
         alert(`🎉 [${planType}] 요금제 구독 조기 리셋이 성공적으로 승인되었습니다! 오늘부터 새로운 결제 주기가 적용되며, ${res.credits.toLocaleString()}회가 즉시 리셋 충전되었습니다.`);
-        setShowExhaustedModal(false);
+        setShowBillingModal(false);
       }
     } catch (e) {
       console.error(e);
@@ -1067,10 +1128,23 @@ export default function HomePage() {
       return;
     }
 
-    // 개발 모드가 아닐 때 크레딧 소진 가드
-    const isDevMode = process.env.NODE_ENV === 'development';
-    if (!isDevMode && remainingCredits <= 0) {
-      setShowExhaustedModal(true);
+    // 1. 크레딧 소진 가드 (잔여 크레딧 0회 이하 시)
+    if (remainingCredits <= 0) {
+      alert('보유하신 크레딧이 모두 소진되었습니다.\n플랜을 충전하신 후 시뮬레이션을 이용해 주세요.');
+      setIsLoading(false);
+      setCurrentGeneratingIndex(null);
+      setShowBillingModal(true);
+      return;
+    }
+
+    // 2. 선택 개수가 보유 잔여 크레딧을 초과할 경우 실행 차단 및 알림
+    if (queue.length > remainingCredits) {
+      alert(
+        `선택하신 스타일 개수(${queue.length}개)가 현재 보유 크레딧(${remainingCredits}회)을 초과했습니다!\n\n스타일 선택 개수를 ${remainingCredits}개 이하로 줄이시거나, 크레딧을 추가 충전해 주세요.`
+      );
+      setIsLoading(false);
+      setCurrentGeneratingIndex(null);
+      setShowBillingModal(true);
       return;
     }
 
@@ -1081,6 +1155,11 @@ export default function HomePage() {
     let tempCredits = remainingCredits;
 
     for (let i = 0; i < queue.length; i++) {
+      if (tempCredits <= 0) {
+        setShowBillingModal(true);
+        break;
+      }
+
       const job = queue[i];
       setCurrentGeneratingIndex(i);
       const startTime = performance.now();
@@ -1173,11 +1252,9 @@ export default function HomePage() {
           });
 
         // 사용 횟수 실시간 차감 및 네이티브/로컬 스토리지에 즉시 동기화
-        if (process.env.NODE_ENV !== 'development') {
-          tempCredits = Math.max(0, tempCredits - 1);
-          setRemainingCredits(tempCredits);
-          nativeBridge.saveCreditsData(tempCredits, totalPlanCredits, userPlan);
-        }
+        tempCredits = Math.max(0, tempCredits - 1);
+        setRemainingCredits(tempCredits);
+        nativeBridge.saveCreditsData(tempCredits, totalPlanCredits, userPlan);
 
       } catch (err: any) {
         console.error(err);
@@ -1338,47 +1415,115 @@ export default function HomePage() {
     }
   };
 
-  // 전체 스타일 종합 제안서 캔버스 이미지 생성기 (Before 1장 + After 3~4장 + 코디 비교표 합성)
+  // 전체 스타일 종합 제안서 캔버스 이미지 생성기 (Before 1장 + After 전체 스타일 + 코디 비교표 합성)
   const generateCombinedReportCanvasImage = async (): Promise<string | null> => {
-    if (!originalImage || resultsList.length === 0) return null;
+    const effectiveBefore = originalImage || resultsList[0]?.beforeImage || '';
+    if (resultsList.length === 0) return null;
     setIsGeneratingCombinedImage(true);
 
     try {
-      // 이미지 로드 헬퍼
-      const loadImage = (src: string): Promise<HTMLImageElement> => {
-        return new Promise((resolve, reject) => {
+      // 절대 실패하지 않는 안전한 이미지 로더
+      const loadImageSafe = (src: string): Promise<HTMLImageElement> => {
+        return new Promise((resolve) => {
+          if (!src) {
+            const blank = new Image();
+            blank.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+            resolve(blank);
+            return;
+          }
+
           const img = new Image();
-          if (src.startsWith('http')) {
+          // 외부 http 주소일 때만 crossOrigin 시도
+          if (src.startsWith('http://') || src.startsWith('https://')) {
             img.crossOrigin = 'anonymous';
           }
+
           img.onload = () => resolve(img);
-          img.onerror = (e) => reject(e);
+          img.onerror = () => {
+            console.warn('Image load with CORS failed, retrying directly:', src?.slice(0, 40));
+            const fallback = new Image();
+            fallback.onload = () => resolve(fallback);
+            fallback.onerror = () => {
+              // 이미지 로드 실패 시 대체 캔버스 더미 이미지 생성하여 렌더링 중단 방지
+              const fallbackCanvas = document.createElement('canvas');
+              fallbackCanvas.width = 400;
+              fallbackCanvas.height = 500;
+              const fCtx = fallbackCanvas.getContext('2d');
+              if (fCtx) {
+                fCtx.fillStyle = '#27272a';
+                fCtx.fillRect(0, 0, 400, 500);
+                fCtx.fillStyle = '#a1a1aa';
+                fCtx.font = 'bold 20px sans-serif';
+                fCtx.textAlign = 'center';
+                fCtx.fillText('Style Photo', 200, 250);
+              }
+              const dummyImg = new Image();
+              dummyImg.onload = () => resolve(dummyImg);
+              dummyImg.src = fallbackCanvas.toDataURL();
+            };
+            fallback.src = src;
+          };
           img.src = src;
         });
       };
 
-      const beforeImg = await loadImage(originalImage);
-      const afterItems = resultsList.slice(0, 3);
-      const afterImgs = await Promise.all(afterItems.map((item) => loadImage(item.afterImage)));
+      const [beforeImg, ...afterImgs] = await Promise.all([
+        loadImageSafe(effectiveBefore),
+        ...resultsList.map((item) => loadImageSafe(item.afterImage))
+      ]);
 
-      // 캔버스 크기 계산 (1200px 기준 고화질)
-      const canvas = document.createElement('canvas');
-      const totalCards = 1 + afterItems.length; // Before 1개 + After 최대 3개 (총 2~4개)
-      const cols = totalCards <= 2 ? 2 : totalCards === 3 ? 3 : 2;
-      const rows = totalCards <= 3 ? 1 : 2;
+      const afterItems = resultsList;
 
-      const cardWidth = 540;
-      const cardHeight = 540;
-      const gap = 30;
-      const padding = 50;
+      // 캔버스 크기 및 동적 그리드 계산 (Ultra-HD 초고해상도 2.5K~3K 규격)
+      const totalCards = 1 + afterItems.length; // Before 1개 + After 전체 스타일
+      const cols = totalCards <= 2 ? 2 : totalCards <= 4 ? 2 : totalCards <= 6 ? 3 : totalCards <= 9 ? 3 : 4;
+      const rows = Math.ceil(totalCards / cols);
+
+      const cardWidth = totalCards <= 2 ? 1080 : totalCards <= 4 ? 960 : totalCards <= 6 ? 840 : 760;
+      const cardHeight = Math.round(cardWidth * 1.25); // 인물 사진 전용 4:5 황금비율 (760 x 950 px 고화질)
+      const gap = 40;
+      const padding = 60;
       const headerHeight = 180;
-      const footerHeight = 240;
+      const footerHeight = 360;
+      const infoHeight = 160;
 
+      const canvas = document.createElement('canvas');
       canvas.width = padding * 2 + cols * cardWidth + (cols - 1) * gap;
-      canvas.height = headerHeight + rows * (cardHeight + 90) + footerHeight + padding * 2;
+      canvas.height = headerHeight + rows * (cardHeight + infoHeight + gap) + footerHeight + padding * 2;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
+
+      // 이미지 비율 보정 렌더링 헬퍼 (object-fit: cover)
+      const drawImageCover = (
+        cCtx: CanvasRenderingContext2D,
+        img: HTMLImageElement,
+        dx: number,
+        dy: number,
+        dWidth: number,
+        dHeight: number
+      ) => {
+        const imgRatio = (img.width || 1) / (img.height || 1);
+        const targetRatio = dWidth / dHeight;
+        let sx = 0;
+        let sy = 0;
+        let sWidth = img.width || 1;
+        let sHeight = img.height || 1;
+
+        if (imgRatio > targetRatio) {
+          sWidth = img.height * targetRatio;
+          sx = (img.width - sWidth) / 2;
+        } else {
+          sHeight = img.width / targetRatio;
+          sy = (img.height - sHeight) / 2;
+        }
+
+        try {
+          cCtx.drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+        } catch (e) {
+          console.warn('drawImage error handled:', e);
+        }
+      };
 
       // 1. 다크 프리미엄 배경 채우기
       const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -1390,40 +1535,35 @@ export default function HomePage() {
 
       // 테두리 골드 라인
       ctx.strokeStyle = '#eab308';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(15, 15, canvas.width - 30, canvas.height - 30);
+      ctx.lineWidth = 6;
+      ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
 
-      // 2. 상단 헤더 텍스트
+      // 2. 상단 헤더 텍스트 (단일 메인 타이틀로 깔끔하게 정돈)
       ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 36px sans-serif';
+      ctx.font = 'bold 64px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`✨ ${salonName || 'ModeStyle Pro'} 헤어 & 패션 종합 스타일링 리포트`, canvas.width / 2, padding + 55);
-
-      ctx.fillStyle = '#a1a1aa';
-      ctx.font = '20px sans-serif';
-      const todayStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-      ctx.fillText(`담당: ${designerName || '지오 디자이너'}  |  컨설팅 일자: ${todayStr}`, canvas.width / 2, padding + 95);
+      ctx.fillText(`✨ ${salonName || 'ModeStyle Pro'} 헤어 & 패션 종합 스타일링 리포트`, canvas.width / 2, padding + 70);
 
       ctx.strokeStyle = '#27272a';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(padding, headerHeight);
-      ctx.lineTo(canvas.width - padding, headerHeight);
+      ctx.moveTo(padding, headerHeight - 20);
+      ctx.lineTo(canvas.width - padding, headerHeight - 20);
       ctx.stroke();
 
-      // 3. 카드 렌더링 (Before + After 스타일들)
+      // 3. 카드 렌더링 (Before + 전체 After 스타일들)
       const allCards = [
         {
           title: '📷 BEFORE (현재 스타일)',
           outfit: '현재 본연의 헤어 & 스타일링 상태',
           img: beforeImg,
-          badgeColor: '#71717a'
+          badgeColor: '#a1a1aa'
         },
         ...afterItems.map((res, i) => ({
-          title: `✨ 추천 ${i + 1}: ${res.styleName}`,
+          title: `✨ [스타일 ${i + 1}] ${res.styleName}`,
           outfit: `👗 ${res.recommendedOutfit || '헤어 맞춤 모던 코디'}`,
-          img: afterImgs[i],
-          badgeColor: '#f59e0b'
+          img: afterImgs[i] || beforeImg,
+          badgeColor: '#fbbf24'
         }))
       ];
 
@@ -1432,66 +1572,86 @@ export default function HomePage() {
         const r = Math.floor(i / cols);
         const c = i % cols;
         const x = padding + c * (cardWidth + gap);
-        const y = headerHeight + 30 + r * (cardHeight + 90);
+        const y = headerHeight + 20 + r * (cardHeight + infoHeight + gap);
 
         // 카드 테두리 배경
         ctx.fillStyle = '#18181b';
         ctx.strokeStyle = '#27272a';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.roundRect(x, y, cardWidth, cardHeight, 16);
+        ctx.roundRect(x, y, cardWidth, cardHeight + infoHeight, 28);
         ctx.fill();
         ctx.stroke();
 
-        // 이미지 클리핑 & 그리기
+        // 이미지 클리핑 & 비율 유지 그리기 (4:5)
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(x + 10, y + 10, cardWidth - 20, cardHeight - 20, 12);
+        ctx.roundRect(x + 14, y + 14, cardWidth - 28, cardHeight - 28, 20);
         ctx.clip();
-        ctx.drawImage(card.img, x + 10, y + 10, cardWidth - 20, cardHeight - 20);
+        drawImageCover(ctx, card.img, x + 14, y + 14, cardWidth - 28, cardHeight - 28);
         ctx.restore();
 
         // 스타일 타이틀 배지
         ctx.fillStyle = '#09090b';
         ctx.beginPath();
-        ctx.roundRect(x, y + cardHeight + 8, cardWidth, 40, 10);
+        ctx.roundRect(x + 14, y + cardHeight + 8, cardWidth - 28, 64, 16);
         ctx.fill();
 
         ctx.fillStyle = card.badgeColor;
-        ctx.font = 'bold 20px sans-serif';
+        ctx.font = 'bold 32px sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(card.title, x + 15, y + cardHeight + 35);
+        ctx.fillText(card.title, x + 32, y + cardHeight + 52);
 
         // 추천 코디 배지
         ctx.fillStyle = '#e4e4e7';
-        ctx.font = '16px sans-serif';
-        ctx.fillText(card.outfit, x + 15, y + cardHeight + 68);
+        ctx.font = '24px sans-serif';
+        const outfitText = card.outfit.length > 36 ? card.outfit.slice(0, 34) + '...' : card.outfit;
+        ctx.fillText(outfitText, x + 32, y + cardHeight + 115);
       }
 
       // 4. 하단 요약 및 살롱 안내 푸터
-      const footerY = canvas.height - footerHeight + 20;
+      const footerY = canvas.height - footerHeight + 40;
       ctx.strokeStyle = '#27272a';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(padding, footerY);
       ctx.lineTo(canvas.width - padding, footerY);
       ctx.stroke();
 
+      const todayStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
       ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 24px sans-serif';
+      ctx.font = 'bold 40px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`📋 고객님만의 시그니처 룩을 위한 프리미엄 맞춤 제안입니다`, canvas.width / 2, footerY + 50);
+      ctx.fillText(`📋 고객님만의 시그니처 룩을 위한 프리미엄 맞춤 제안입니다`, canvas.width / 2, footerY + 80);
 
       ctx.fillStyle = '#d4d4d8';
-      ctx.font = '18px sans-serif';
-      ctx.fillText(`📍 예약 및 스타일 상담 문의: ${salonName || 'ModeStyle Pro 살롱'} (${designerName || '지오 디자이너'})`, canvas.width / 2, footerY + 90);
+      ctx.font = '30px sans-serif';
+      const contactParts = [];
+      if (salonName) contactParts.push(salonName);
+      if (designerName) contactParts.push(designerName);
+      if (phoneNumber) contactParts.push(`📞 ${phoneNumber}`);
+      const contactInfo = contactParts.length > 0 ? contactParts.join('  |  ') : '스타일 상담실';
+      ctx.fillText(`📍 예약 및 스타일 상담 문의: ${contactInfo}`, canvas.width / 2, footerY + 150);
 
       ctx.fillStyle = '#71717a';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(`Generated by ModeStyle Pro AI Consulting Solution  |  ${todayStr}`, canvas.width / 2, footerY + 130);
+      ctx.font = '22px sans-serif';
+      ctx.fillText(`Generated by ModeStyle Pro Consulting Solution  |  ${todayStr}`, canvas.width / 2, footerY + 220);
 
-      const combinedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      setCombinedReportImage(combinedDataUrl);
+      let combinedDataUrl: string | null = null;
+      try {
+        combinedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      } catch (canvasErr) {
+        console.warn('toDataURL jpeg failed, trying png:', canvasErr);
+        try {
+          combinedDataUrl = canvas.toDataURL('image/png');
+        } catch (e) {
+          console.error('Canvas toDataURL completely failed:', e);
+        }
+      }
+
+      if (combinedDataUrl) {
+        setCombinedReportImage(combinedDataUrl);
+      }
       return combinedDataUrl;
     } catch (err) {
       console.error('Failed to generate combined report image:', err);
@@ -1504,7 +1664,10 @@ export default function HomePage() {
   // 전체 스타일 종합 제안서 모달 열기 핸들러
   const handleOpenCombinedReport = () => {
     setShowCombinedReportModal(true);
-    generateCombinedReportCanvasImage();
+    setCombinedReportImage(null);
+    setTimeout(() => {
+      generateCombinedReportCanvasImage();
+    }, 50);
   };
 
   // 종합 리포트 텍스트 복사 핸들러
@@ -1658,7 +1821,17 @@ export default function HomePage() {
                   defaultValue={salonName}
                   id="setting-salon-input"
                   className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs focus:border-amber-400 focus:outline-none text-zinc-100"
-                  placeholder="예: 드림헤어"
+                  placeholder="예: 살롱오하이"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-zinc-400 text-xs font-bold block">전화번호 / 예약 문의</label>
+                <input
+                  type="tel"
+                  defaultValue={phoneNumber}
+                  id="setting-phone-input"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs focus:border-amber-400 focus:outline-none text-zinc-100"
+                  placeholder="예: 02-1234-5678 또는 010-1234-5678"
                 />
               </div>
               <div className="space-y-1.5">
@@ -1668,7 +1841,7 @@ export default function HomePage() {
                   defaultValue={designerName}
                   id="setting-designer-input"
                   className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs focus:border-amber-400 focus:outline-none text-zinc-100"
-                  placeholder="예: 지오"
+                  placeholder="예: 원장 수빈"
                 />
               </div>
             </div>
@@ -1677,18 +1850,19 @@ export default function HomePage() {
               <button
                 onClick={() => setShowSettings(false)}
                 type="button"
-                className="flex-1 py-2.5 rounded-xl border border-zinc-800 hover:bg-zinc-900 text-zinc-400 font-bold text-xs transition-colors"
+                className="flex-1 py-2.5 rounded-xl border border-zinc-800 hover:bg-zinc-900 text-zinc-400 font-bold text-xs transition-colors cursor-pointer"
               >
                 취소
               </button>
               <button
                 onClick={() => {
                   const sInput = document.getElementById('setting-salon-input') as HTMLInputElement;
+                  const pInput = document.getElementById('setting-phone-input') as HTMLInputElement;
                   const dInput = document.getElementById('setting-designer-input') as HTMLInputElement;
-                  handleSaveSettings(sInput?.value || '', dInput?.value || '지오 디자이너');
+                  handleSaveSettings(sInput?.value?.trim() ?? '', pInput?.value?.trim() ?? '', dInput?.value?.trim() ?? '');
                 }}
                 type="button"
-                className="flex-1 py-2.5 rounded-xl gold-bg-gradient text-zinc-950 font-bold text-xs transition-colors shadow-lg"
+                className="flex-1 py-2.5 rounded-xl gold-bg-gradient text-zinc-950 font-bold text-xs transition-colors shadow-lg cursor-pointer"
               >
                 설정 저장
               </button>
@@ -1746,17 +1920,33 @@ export default function HomePage() {
             <div className="space-y-3.5">
               {/* 1회 충전 */}
               <div
-                onClick={() => handlePurchasePlan('1회충전')}
+                onClick={() => handlePurchasePlan('1회충전 : 10건')}
                 className="w-full text-left p-4 rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-400/80 transition-all flex items-center justify-between group cursor-pointer"
                 role="button"
                 tabIndex={0}
               >
                 <div className="space-y-0.5">
-                  <span className="text-xs font-bold text-zinc-200">1회 충전 🎟️</span>
-                  <p className="text-[10px] text-zinc-500">10회 시뮬레이션 제공 (장당 300원 상당)</p>
+                  <span className="text-xs font-bold text-zinc-200">1회 충전 : 10건 🎟️</span>
+                  <p className="text-[10px] text-zinc-500">10회 시뮬레이션 제공</p>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-extrabold text-amber-400 group-hover:underline">3,000원 결제</span>
+                </div>
+              </div>
+
+              {/* 20회 충전 */}
+              <div
+                onClick={() => handlePurchasePlan('1회 충전 : 20건')}
+                className="w-full text-left p-4 rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-zinc-800/80 hover:border-amber-400/80 transition-all flex items-center justify-between group cursor-pointer"
+                role="button"
+                tabIndex={0}
+              >
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-zinc-200">1회 충전 : 20건 🎫</span>
+                  <p className="text-[10px] text-zinc-500">20회 시뮬레이션 제공</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">5,000원 결제</span>
                 </div>
               </div>
 
@@ -1772,7 +1962,7 @@ export default function HomePage() {
                 </div>
                 <div className="space-y-0.5">
                   <span className="text-xs font-bold text-zinc-200">라이트 구독 🚀</span>
-                  <p className="text-[10px] text-zinc-500">월 300회 시뮬레이션 제공 (장당 96원 상당)</p>
+                  <p className="text-[10px] text-zinc-500">월 200회 시뮬레이션 제공</p>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-extrabold text-amber-400 group-hover:underline">월 29,000원</span>
@@ -1791,10 +1981,10 @@ export default function HomePage() {
                 </div>
                 <div className="space-y-0.5">
                   <span className="text-xs font-bold text-zinc-200">살롱 구독 👑</span>
-                  <p className="text-[10px] text-zinc-500">월 1,000회 대용량 시뮬레이션 (장당 69원 상당)</p>
+                  <p className="text-[10px] text-zinc-500">월 500회 대용량 시뮬레이션</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">월 69,000원</span>
+                  <span className="text-xs font-extrabold text-amber-400 group-hover:underline">월 59,000원</span>
                 </div>
               </div>
             </div>
@@ -1811,186 +2001,6 @@ export default function HomePage() {
                 * 인앱 결제는 Apple/Google 계정과 연동되어 기기를 변경하더라도 복원을 통해 크레딧이 동일하게 이전됩니다.
               </p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. 크레딧 소진 유저 상태별 맞춤형 안내 모달 */}
-      {showExhaustedModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-md rounded-3xl border border-zinc-800 p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
-            {/* 무료체험 소진 케이스 */}
-            {userPlan === '무료체험' && (
-              <div className="space-y-5 text-center">
-                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
-                  <span className="text-2xl">🎀</span>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="font-extrabold text-lg text-white">무료 체험 3회를 모두 사용하셨습니다!</h3>
-                  <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">
-                    {"헤어 스타일 시뮬레이션이 마음에 드셨나요?\n지속적인 스타일 탐색을 위해 원하시는 플랜을 선택해 주세요."}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2.5 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handlePurchasePlan('1회충전')}
-                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-xs sm:text-sm hover:scale-[1.02] transition-all shadow-md"
-                  >
-                    3,000원으로 10회 시작하기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePurchasePlan('라이트')}
-                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-xs sm:text-sm font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
-                  >
-                    월 29,000원 라이트 구독하기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowExhaustedModal(false)}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
-                  >
-                    닫기
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 1회 충전 소진 케이스 */}
-            {userPlan === '1회충전' && (
-              <div className="space-y-5 text-center">
-                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
-                  <span className="text-2xl">🎟️</span>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="font-extrabold text-lg text-white">10회를 모두 소진하셨습니다!</h3>
-                  <p className="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">
-                    {"10회 추가 충전(3,000원)을 하거나, 더 저렴한 구독 요금제로 전환해 보세요."}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2.5 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handlePurchasePlan('1회충전')}
-                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-xs sm:text-sm hover:scale-[1.02] transition-all shadow-md"
-                  >
-                    3,000원 추가 충전 (10회)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowExhaustedModal(false);
-                      setShowBillingModal(true);
-                    }}
-                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-xs sm:text-sm font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
-                  >
-                    구독 플랜 둘러보기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowExhaustedModal(false)}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
-                  >
-                    닫기
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 라이트 구독 소진 케이스 */}
-            {userPlan === '라이트' && (
-              <div className="space-y-5 text-center">
-                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
-                  <span className="text-2xl">🚀</span>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="font-extrabold text-lg text-white">300회를 모두 소진하셨습니다!</h3>
-                  <p className="text-xs text-zinc-400 leading-relaxed text-left whitespace-pre-line">
-                    {`지금 29,000원을 결제하시면 즉시 300회가 충전되며, 오늘을 기준으로 다음 정기 결제일이 변경됩니다.\n(다음 결제 예정일: ${calcNextBillingDate()})`}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2.5 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handleEarlyResetPurchase('라이트')}
-                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-[11px] sm:text-xs hover:scale-[1.02] transition-all shadow-md"
-                  >
-                    지금 결제하고 300회 즉시 리셋 (29,000원)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePurchasePlan('살롱')}
-                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-[11px] sm:text-xs font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
-                  >
-                    살롱 구독으로 업그레이드 (69,000원)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowExhaustedModal(false)}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
-                  >
-                    닫기
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 살롱 구독 소진 케이스 */}
-            {userPlan === '살롱' && (
-              <div className="space-y-5 text-center">
-                <div className="w-12 h-12 rounded-full bg-amber-400/10 border border-amber-400/20 flex items-center justify-center mx-auto">
-                  <span className="text-2xl">👑</span>
-                </div>
-                <div className="space-y-2">
-                  <h3 className="font-extrabold text-lg text-white">1,000회를 모두 소진하셨습니다!</h3>
-                  <p className="text-xs text-zinc-400 leading-relaxed text-left whitespace-pre-line">
-                    {`지금 69,000원을 결제하시면 즉시 1,000회가 충전되며, 오늘을 기준으로 다음 정기 결제일이 변경됩니다.\n(다음 결제 예정일: ${calcNextBillingDate()})`}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2.5 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handleEarlyResetPurchase('살롱')}
-                    className="w-full py-3.5 gold-bg-gradient text-zinc-950 font-extrabold rounded-xl text-[11px] sm:text-xs hover:scale-[1.02] transition-all shadow-md"
-                  >
-                    지금 결제하고 1,000회 즉시 리셋 (69,000원)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setIsLoading(true);
-                      try {
-                        const res = await new Promise<{ success: boolean; credits: number }>((resolve) => {
-                          setTimeout(() => resolve({ success: true, credits: 100 }), 800);
-                        });
-                        if (res.success) {
-                          const nextVal = remainingCredits + res.credits;
-                          setRemainingCredits(nextVal);
-                          nativeBridge.saveCreditsData(nextVal, totalPlanCredits, userPlan);
-                          alert(`🎉 구독자 전용 100회(8,900원) 추가 충전이 성공적으로 완료되었습니다!`);
-                          setShowExhaustedModal(false);
-                        }
-                      } catch (e) {
-                        alert('추가 충전 도중 오류가 발생했습니다.');
-                      } finally {
-                        setIsLoading(false);
-                      }
-                    }}
-                    className="w-full py-3.5 rounded-xl border border-zinc-800 bg-zinc-900/30 text-zinc-200 text-xs sm:text-sm font-bold hover:bg-zinc-900/60 hover:text-white transition-all"
-                  >
-                    구독자 전용 100회 추가 (8,900원)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowExhaustedModal(false)}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-400 pt-1"
-                  >
-                    닫기
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -2066,10 +2076,11 @@ export default function HomePage() {
                 </button>
               </div>
 
-              {/* 샘플 Before/After 슬라이더 */}
+              {/* 샘플 Before/After 슬라이더 (드래그 슬라이더 바 모드) */}
               <BeforeAfterSlider
                 beforeImage={sampleGender === '여성' ? '/sample-before.jpg' : '/sample-male-before.jpg'}
                 afterImage={sampleGender === '여성' ? '/sample-after.jpg' : '/sample-male-after.jpg'}
+                mode="slider"
               />
 
               <div className="mt-4 space-y-2 text-center lg:text-left">
@@ -2121,7 +2132,7 @@ export default function HomePage() {
                 <div className="grid grid-cols-2 gap-2 bg-zinc-950/80 p-1.5 rounded-xl border border-zinc-900 shadow-inner">
                   <button
                     type="button"
-                    onClick={() => setGender('여성')}
+                    onClick={() => handleManualGenderChange('여성')}
                     className={`py-3 px-6 text-xs md:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${gender === '여성'
                       ? 'bg-zinc-850 text-amber-400 shadow-md border border-zinc-700/50'
                       : 'text-zinc-500 hover:text-zinc-300'
@@ -2132,7 +2143,7 @@ export default function HomePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setGender('남성')}
+                    onClick={() => handleManualGenderChange('남성')}
                     className={`py-3 px-6 text-xs md:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${gender === '남성'
                       ? 'bg-zinc-850 text-amber-400 shadow-md border border-zinc-700/50'
                       : 'text-zinc-500 hover:text-zinc-300'
@@ -2471,6 +2482,13 @@ export default function HomePage() {
                     </>
                   )}
                 </button>
+
+                {totalJobsCount > remainingCredits && (
+                  <p className="text-xs text-amber-400 font-bold text-center mt-2 flex items-center justify-center gap-1.5 animate-pulse">
+                    <span>⚠️</span>
+                    <span>선택한 스타일({totalJobsCount}개)이 잔여 크레딧({remainingCredits}회)을 초과했습니다.</span>
+                  </p>
+                )}
               </div>
 
               {/* 다중 스타일 동시 생성 시 진행 바 및 로딩 스피너 */}
@@ -2551,8 +2569,8 @@ export default function HomePage() {
                   type="button"
                   onClick={() => setActiveProposalId('all')}
                   className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold shrink-0 transition-all duration-200 border ${activeProposalId === 'all'
-                      ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/30'
-                      : 'bg-zinc-900/90 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850'
+                    ? 'bg-amber-400/20 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/30'
+                    : 'bg-zinc-900/90 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850'
                     }`}
                 >
                   <span>✨ 전체 모아보기</span>
@@ -2571,8 +2589,8 @@ export default function HomePage() {
                       type="button"
                       onClick={() => setActiveProposalId(res.id)}
                       className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all duration-200 border ${isSelected
-                          ? 'bg-amber-400/20 border-amber-400 text-white shadow-lg ring-2 ring-amber-400/40'
-                          : 'bg-zinc-900/90 border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 hover:bg-zinc-850'
+                        ? 'bg-amber-400/20 border-amber-400 text-white shadow-lg ring-2 ring-amber-400/40'
+                        : 'bg-zinc-900/90 border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 hover:bg-zinc-850'
                         }`}
                     >
                       {/* 미니 썸네일 */}
@@ -2731,37 +2749,6 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-
-            {/* 🌟 제안서 보관함 최하단 빠른 공유 & 상담 안내 배너 */}
-            <div className="glass-panel p-5 rounded-2xl border border-amber-400/30 bg-amber-400/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3 text-left">
-                <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-300 font-bold text-lg shrink-0">
-                  💬
-                </div>
-                <div>
-                  <h5 className="text-sm font-bold text-white">고객 맞춤 상담 제안서 완성</h5>
-                  <p className="text-xs text-zinc-400">
-                    원하시는 스타일 제안서를 선택하여 고객님께 카카오톡이나 메시지로 간편하게 공유해 보세요.
-                  </p>
-                </div>
-              </div>
-
-              {resultsList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = activeProposalId !== 'all'
-                      ? resultsList.find(r => r.id === activeProposalId) || resultsList[0]
-                      : resultsList[0];
-                    handleShareFullReport(target);
-                  }}
-                  className="w-full sm:w-auto gold-bg-gradient hover:opacity-95 text-zinc-950 font-extrabold py-3 px-5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 text-xs md:text-sm shrink-0"
-                >
-                  <Share2 className="w-4 h-4" />
-                  <span>현재 제안서 리포트 공유하기</span>
-                </button>
-              )}
-            </div>
           </section>
         )}
 
@@ -2876,9 +2863,14 @@ export default function HomePage() {
             <div className="space-y-3">
               {/* 개발자용 간편 로그인 (로컬 테스트용) */}
               <button
-                onClick={() => {
-                  signIn('credentials', { username: '테스트 디자이너', callbackUrl: '/' });
-                  setShowLoginModal(false);
+                onClick={async () => {
+                  try {
+                    await signIn('credentials', { username: '테스트 디자이너', redirect: false });
+                    setShowLoginModal(false);
+                    window.location.reload();
+                  } catch (e) {
+                    console.error('개발자 로그인 에러:', e);
+                  }
                 }}
                 type="button"
                 className="w-full py-3.5 px-4 rounded-xl border border-amber-400/30 bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 font-extrabold text-xs flex items-center justify-center gap-2.5 shadow-lg shadow-amber-400/5 transition-all active:scale-[0.99] cursor-pointer"
@@ -2958,6 +2950,12 @@ export default function HomePage() {
 
             {/* 리포트 내용 미리보기 박스 */}
             {(() => {
+              const contactParts = [];
+              if (salonName) contactParts.push(salonName);
+              if (designerName) contactParts.push(designerName);
+              if (phoneNumber) contactParts.push(`📞 ${phoneNumber}`);
+              const contactLine = contactParts.length > 0 ? contactParts.join(' • ') : 'ModeStyle Pro 헤어 살롱';
+
               const reportText = `[${salonName || 'ModeStyle Pro'} 헤어 맞춤 제안서]
 ✨ 추천 스타일: ${sharingReportResult.gender} ${sharingReportResult.length} ‘${sharingReportResult.styleName}’
 
@@ -2973,7 +2971,7 @@ ${sharingReportResult.upsell ? `• ${sharingReportResult.upsell}` : ''}
 🧴 홈 스타일링 & 관리 가이드:
 ${sharingReportResult.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨을 살려주세요.'}
 
-📍 상담 및 예약 문의: ${salonName || 'ModeStyle Pro 헤어 살롱'}`;
+📍 상담 및 예약 문의: ${contactLine}`;
 
               return (
                 <div className="space-y-4">
@@ -2998,8 +2996,8 @@ ${sharingReportResult.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨
                       type="button"
                       onClick={() => handleCopyReportText(reportText)}
                       className={`w-full py-3.5 px-4 rounded-xl font-extrabold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg ${isCopiedReport
-                          ? 'bg-emerald-500 text-white shadow-emerald-500/20'
-                          : 'gold-bg-gradient text-zinc-950 shadow-amber-400/20 hover:opacity-95'
+                        ? 'bg-emerald-500 text-white shadow-emerald-500/20'
+                        : 'gold-bg-gradient text-zinc-950 shadow-amber-400/20 hover:opacity-95'
                         }`}
                     >
                       {isCopiedReport ? (
@@ -3067,7 +3065,7 @@ ${sharingReportResult.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨
                   </span>
                 </h3>
                 <p className="text-xs text-zinc-400">
-                  {salonName || 'ModeStyle Pro'} • {designerName || '지오 디자이너'}
+                  {[salonName, designerName, phoneNumber ? `📞 ${phoneNumber}` : ''].filter(Boolean).join(' • ') || 'ModeStyle Pro Consulting'}
                 </p>
               </div>
             </div>
@@ -3086,37 +3084,53 @@ ${sharingReportResult.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨
               </div>
 
               {combinedReportImage ? (
-                <div className="relative rounded-xl overflow-hidden border border-zinc-750 max-h-72 flex items-center justify-center bg-black/60 group">
+                <div className="relative rounded-xl overflow-hidden border border-zinc-750 max-h-80 flex items-center justify-center bg-black/60 group">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={combinedReportImage}
                     alt="종합 스타일링 리포트"
-                    className="max-h-72 w-auto object-contain rounded-lg"
+                    className="max-h-80 w-auto object-contain rounded-lg shadow-lg"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <button
                       type="button"
                       onClick={handleDownloadCombinedImage}
-                      className="bg-amber-400 text-zinc-950 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg"
+                      className="bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
                     >
                       <Download className="w-4 h-4" />
                       <span>고화질 이미지로 저장하기</span>
                     </button>
                   </div>
                 </div>
+              ) : isGeneratingCombinedImage ? (
+                <div className="py-14 text-center text-zinc-400 text-xs flex flex-col items-center justify-center gap-3">
+                  <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="font-medium text-zinc-300">전체 제안서 이미지를 고화질로 합성하고 있습니다...</span>
+                </div>
               ) : (
-                <div className="py-12 text-center text-zinc-500 text-xs flex flex-col items-center gap-2">
-                  <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                  <span>전체 제안서 이미지를 합성하고 있습니다...</span>
+                <div className="py-8 text-center text-zinc-400 text-xs flex flex-col items-center justify-center gap-3">
+                  <p className="text-zinc-400">이미지 합성 중 일시적인 지연이 발생했습니다.</p>
+                  <button
+                    type="button"
+                    onClick={() => generateCombinedReportCanvasImage()}
+                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                  >
+                    <span>🔄 다시 합성하기</span>
+                  </button>
                 </div>
               )}
             </div>
 
             {/* 2. 전체 제안서 텍스트 영역 */}
             {(() => {
+              const contactParts = [];
+              if (salonName) contactParts.push(salonName);
+              if (designerName) contactParts.push(designerName);
+              if (phoneNumber) contactParts.push(`📞 ${phoneNumber}`);
+              const contactLine = contactParts.length > 0 ? contactParts.join(' • ') : 'ModeStyle Pro 헤어 살롱';
+
               const combinedText = `[${salonName || 'ModeStyle Pro'} 헤어 & 패션 종합 스타일링 제안서]
-담당 디자이너: ${designerName || '지오 디자이너'}
-고객 맞춤 종합 컨설팅 리포트 (${resultsList.length}가지 추천 스타일)
+${designerName ? `담당 디자이너: ${designerName}\n` : ''}${phoneNumber ? `예약/문의 전화: ${phoneNumber}\n` : ''}고객 맞춤 종합 컨설팅 리포트 (${resultsList.length}가지 추천 스타일)
 
 ━━━━━━━━━━━━━━━━━━━━
 ${resultsList.map((res, idx) => `
@@ -3135,7 +3149,7 @@ ${res.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨을 살려 손�
 `).join('\n────────────────────\n')}
 ━━━━━━━━━━━━━━━━━━━━
 
-📍 상담 및 예약 문의: ${salonName || 'ModeStyle Pro 헤어 살롱'}`;
+📍 상담 및 예약 문의: ${contactLine}`;
 
               return (
                 <div className="space-y-4">
@@ -3171,8 +3185,8 @@ ${res.stylingTip || '샴푸 후 가볍게 드라이하여 볼륨을 살려 손�
                       type="button"
                       onClick={() => handleCopyCombinedReportText(combinedText)}
                       className={`w-full py-3 px-4 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] border ${isCopiedCombinedReport
-                          ? 'bg-emerald-500 text-white border-emerald-400 shadow-emerald-500/20'
-                          : 'bg-zinc-900 hover:bg-zinc-850 border-zinc-750 text-zinc-200'
+                        ? 'bg-emerald-500 text-white border-emerald-400 shadow-emerald-500/20'
+                        : 'bg-zinc-900 hover:bg-zinc-850 border-zinc-750 text-zinc-200'
                         }`}
                     >
                       {isCopiedCombinedReport ? (

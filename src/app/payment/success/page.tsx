@@ -44,13 +44,20 @@ function PaymentSuccessContent() {
         console.warn('Server payment update failed, falling back to local storage:', err);
       }
 
-      // 2. 비회원이거나 서버 통신 실패 시 로컬스토리지 백업 저장 (합산)
+      // 2. 비회원이거나 서버 통신 실패 시 로컬스토리지 백업 저장
       if (credits > 0) {
         if (typeof window !== 'undefined' && window.localStorage) {
-          const prevRemaining = parseInt(localStorage.getItem('credits_remaining') || '5', 10);
-          const prevTotal = parseInt(localStorage.getItem('total_plan_credits') || '5', 10);
-          const newRemaining = prevRemaining + credits;
-          const newTotal = prevTotal + total;
+          const prevPlan = localStorage.getItem('user_plan') || '무료체험';
+          const prevRemaining = parseInt(localStorage.getItem('credits_remaining') || '0', 10);
+          
+          let newRemaining = credits;
+          let newTotal = total;
+
+          // 무료체험이 아닌 기존 유료 크레딧이 남아있던 경우에만 잔여 크레딧 합산
+          if (prevPlan !== '무료체험' && prevRemaining > 0) {
+            newRemaining = prevRemaining + credits;
+            newTotal = newRemaining;
+          }
 
           localStorage.setItem('credits_remaining', newRemaining.toString());
           localStorage.setItem('total_plan_credits', newTotal.toString());

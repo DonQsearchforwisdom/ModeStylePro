@@ -130,6 +130,21 @@ function getLocalFallbackImage(gender: string, hairStyle: string, hairLength?: s
   return null;
 }
 
+// 2단계 생성 전용 활성화 키 우선 획득 헬퍼 (카드 연동 정식 활성화 키 최우선 사용)
+function getGeminiApiKeys(): string[] {
+  const generateKeys = process.env.GEMINI_GENERATE_KEY || process.env.GEMINI_GENERATE_KEYS || '';
+  const multiKeys = process.env.GEMINI_API_KEYS || '';
+  const singleKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+
+  const rawKeys = [
+    ...generateKeys.split(','),
+    ...multiKeys.split(','),
+    singleKey
+  ].map(k => k.trim()).filter(k => k.length > 0);
+
+  return Array.from(new Set(rawKeys));
+}
+
 // 바디 용량 확인 함수
 function getByteLength(str: string): number {
   return Buffer.byteLength(str, 'utf8');
@@ -165,9 +180,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Gemini API Key 획득 (.env.local 지원)
-    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
-
     // base64 이미지 디코딩
     const match = image.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
     let mimeType = 'image/jpeg';
@@ -193,20 +205,23 @@ export async function POST(request: NextRequest) {
         ? 'modern stylish Korean tailored blazer over a crisp clean crewneck shirt'
         : 'chic elegant tailored blazer jacket over a minimalist refined knit top');
 
-    // 프롬프트 구성 (동양인 얼굴/이목구비 완벽 보존 & 의상 맞춤 코디 & 512x512 고효율 최적화)
-    const resolutionSuffix = 'Output a crisp, high-quality 512x512 square resolution image.';
+    // 프롬프트 구성 (동양인 얼굴/이목구비 완벽 보존 & 의상 맞춤 코디 & 1024x1024 고화질 최적화)
+    const resolutionSuffix = 'Output a crisp, photorealistic studio-quality image with healthy hair texture.';
     let instruction = '';
 
     if (customPrompt) {
       instruction = `${customPrompt}. Output a crisp, photorealistic studio image. ${resolutionSuffix}`;
     } else if (changeOutfit) {
-      instruction = `Total makeover transformation: 1) Redesign and restyle the hair: ${specificDetail}. 2) Simultaneously upgrade and coordinate the customer's outfit into a fashionable, matching clothing style: ${outfitDetail}. Keep the person's original face, eyes, eyebrows, nose, lips, facial structure, skin texture, age, expression, and individual identity faithfully preserved. Photorealistic, professional studio lighting, 8k resolution, healthy hair shine. ${resolutionSuffix}`;
+      instruction = `Total makeover transformation: 1) Redesign and restyle the hair: ${specificDetail}. 2) Simultaneously upgrade and coordinate the customer's outfit into a fashionable, matching clothing style: ${outfitDetail}. Keep the person's original face, eyes, eyebrows, nose, lips, facial structure, skin texture, age, expression, and individual identity faithfully preserved. Photorealistic, professional studio lighting, healthy hair shine. ${resolutionSuffix}`;
     } else {
       instruction = `${specificDetail} Keep the person's original face, eyes, eyebrows, nose, lips, facial structure, skin texture, age, expression, clothing, and background EXACTLY the same. Replace and restyle ONLY the hair. ${resolutionSuffix}`;
     }
 
-    // 1. Gemini Flash Image API 호출 시도 (0원 무료 키 지원)
-    if (geminiApiKey) {
+    // 1. 다중 Gemini API Key 순환 & 비상 Failover 호출
+    const apiKeys = getGeminiApiKeys();
+
+    for (let i = 0; i < apiKeys.length; i++) {
+      const currentApiKey = apiKeys[i];
       try {
         const payload = JSON.stringify({
           contents: [
@@ -230,7 +245,7 @@ export async function POST(request: NextRequest) {
         });
 
         const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiApiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${currentApiKey}`,
           {
             method: 'POST',
             headers: {
@@ -242,65 +257,27 @@ export async function POST(request: NextRequest) {
 
         if (geminiRes.ok) {
           const geminiData = await geminiRes.json();
-          const imagePart = geminiData.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-          if (imagePart?.inlineData?.data) {
-            const outMime = imagePart.inlineData.mimeType || 'image/png';
+          const imagePart = geminiData.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData || p.inline_data);
+          const rawData = imagePart?.inlineData?.data || imagePart?.inline_data?.data;
+          if (rawData) {
+            const outMime = imagePart?.inlineData?.mimeType || imagePart?.inline_data?.mimeType || 'image/png';
             return NextResponse.json({
-              image: `data:${outMime};base64,${imagePart.inlineData.data}`
+              image: `data:${outMime};base64,${rawData}`
             });
           }
         } else {
           const errText = await geminiRes.text();
-          console.warn('Gemini Flash Image API returned non-200:', geminiRes.status, errText);
+          console.warn(`[Failover] Gemini Key #${i + 1} (${currentApiKey.slice(0, 8)}...) HTTP ${geminiRes.status}:`, errText);
+          // 429(할당량 초과) 또는 오류 발생 시 다음 백업 키로 자동 즉시 전환
+          continue;
         }
       } catch (geminiErr) {
-        console.warn('Gemini Flash Image Generation error, falling back:', geminiErr);
+        console.warn(`[Failover] Gemini Key #${i + 1} call error, trying next key:`, geminiErr);
+        continue;
       }
     }
 
-    // 2. Stability AI 키가 있는 경우 서브 엔진으로 시도
-    const stabilityKey = process.env.STABILITY_API_KEY || '';
-    if (stabilityKey) {
-      try {
-        const formData = new FormData();
-        const buffer = Buffer.from(base64Image, 'base64');
-        const blob = new Blob([buffer], { type: mimeType });
-        
-        formData.append('init_image', blob, `image.${mimeType.split('/')[1] || 'jpeg'}`);
-        formData.append('init_image_mode', 'IMAGE_STRENGTH');
-        formData.append('image_strength', '0.65');
-        formData.append('text_prompts[0][text]', instruction);
-        formData.append('text_prompts[0][weight]', '1.0');
-        formData.append('text_prompts[1][text]', 'distorted face, blurry face, different person, ugly, bad anatomy, deformed eyes, different clothing, low quality');
-        formData.append('text_prompts[1][weight]', '-1.0');
-
-        const response = await fetch(
-          'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/image-to-image',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${stabilityKey}`,
-              'Accept': 'application/json',
-            },
-            body: formData,
-          }
-        );
-
-        if (response.ok) {
-          const responseJSON = await response.json();
-          const generatedBase64 = responseJSON.artifacts?.[0]?.base64;
-          if (generatedBase64) {
-            return NextResponse.json({
-              image: `data:image/png;base64,${generatedBase64}`
-            });
-          }
-        }
-      } catch (stErr) {
-        console.warn('Stability AI error:', stErr);
-      }
-    }
-
-    // 3. Fallback: 고화질 로컬 프리셋 이미지 즉시 매칭
+    // 2. Fallback: 고화질 로컬 프리셋 이미지 즉시 매칭
     const fallbackImage = getLocalFallbackImage(gender, hairStyle, hairLength);
     if (fallbackImage) {
       return NextResponse.json({ image: fallbackImage });
